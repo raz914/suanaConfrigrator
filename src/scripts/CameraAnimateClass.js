@@ -1,84 +1,93 @@
-  import * as THREE from 'three';
-  import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-  import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-  
-  export class CameraAnimateClass {
-    constructor(scene, camera, controls) {
+import * as THREE from 'three';
 
-      this.camera = camera;
-      this.scene = scene;
-      this.controls = controls;
-      // this.setupCameraPositionTester();
-    }
-    easeInOutCubic(t) {
-      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    }
-    animateCamera(startPos, endPos, startTarget, endTarget, duration, callback) {
-        const startTime = Date.now();
-        const endTime = startTime + duration * 1000;
-        
-        const animate = () => {
-          const now = Date.now();
-          if (now >= endTime) {
-            // Animation complete
-            this.camera.position.copy(endPos);
-            this.controls.target.copy(endTarget);
-            if (callback) callback();
-            return;
-          }
-          
-          // Calculate progress (0 to 1)
-          const progress = (now - startTime) / (endTime - startTime);
-          
-          // Use easing function for smoother animation
-          const easedProgress = this.easeInOutCubic(progress);
-          
-          // Interpolate camera position
-          this.camera.position.lerpVectors(startPos, endPos, easedProgress);
-          
-          // Interpolate target position
-          const currentTarget = new THREE.Vector3();
-          currentTarget.lerpVectors(startTarget, endTarget, easedProgress);
-          this.controls.target.copy(currentTarget);
-          
-          // Continue animation
-          requestAnimationFrame(animate);
-        };
-        
-        // Start animation
-        animate();
-      }
-     
-    showCameraPositionOverlay(x, y, z) {
-      // Create or update an overlay div to show camera position
-      let overlay = document.getElementById('camera-position-overlay');
-      
-      if (!overlay) {
-        // Create the overlay if it doesn't exist
-        overlay = document.createElement('div');
-        overlay.id = 'camera-position-overlay';
-        overlay.style.position = 'fixed';
-        overlay.style.bottom = '20px';
-        overlay.style.right = '20px';
-        overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-        overlay.style.color = 'white';
-        overlay.style.padding = '10px';
-        overlay.style.borderRadius = '5px';
-        overlay.style.fontFamily = 'monospace';
-        overlay.style.zIndex = '1000';
-        overlay.style.transition = 'opacity 1s';
-        document.body.appendChild(overlay);
+export class CameraAnimateClass {
+  constructor(scene, camera, renderer, controls) {
+    this.camera = camera;
+    this.scene = scene;
+    this.renderer = renderer;
+    this.controls = controls;
+    this.animating = false;
+    
+    // Optional: Add camera position tester
+    this.setupCameraPositionTester();
+  }
+  
+  easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+  
+  animateCamera(startPos, endPos, startTarget, endTarget, duration, callback) {
+    this.animating = true;
+    const startTime = Date.now();
+    const endTime = startTime + duration * 1000;
+    
+    const animate = () => {
+      const now = Date.now();
+      if (now >= endTime) {
+        // Animation complete
+        this.camera.position.copy(endPos);
+        this.controls.target.copy(endTarget);
+        this.animating = false;
+        if (callback) callback();
+        return;
       }
       
-      // Update the content and show the overlay
-      overlay.textContent = `Camera: (${x}, ${y}, ${z})`;
-      overlay.style.opacity = '1';
+      // Calculate progress (0 to 1)
+      const progress = (now - startTime) / (endTime - startTime);
       
-      // Hide the overlay after 3 seconds
-      setTimeout(() => {
-        overlay.style.opacity = '0';
-      }, 3000);
+      // Use easing function for smoother animation
+      const easedProgress = this.easeInOutCubic(progress);
+      
+      // Interpolate camera position
+      this.camera.position.lerpVectors(startPos, endPos, easedProgress);
+      
+      // Interpolate target position
+      const currentTarget = new THREE.Vector3();
+      currentTarget.lerpVectors(startTarget, endTarget, easedProgress);
+      this.controls.target.copy(currentTarget);
+      
+      // Continue animation
+      requestAnimationFrame(animate);
+    };
+    
+    // Start animation
+    animate();
+  }
+  
+  isAnimating() {
+    return this.animating;
+  }
+  
+  showCameraPositionOverlay(x, y, z) {
+    // Create or update an overlay div to show camera position
+    let overlay = document.getElementById('camera-position-overlay');
+    
+    if (!overlay) {
+      // Create the overlay if it doesn't exist
+      overlay = document.createElement('div');
+      overlay.id = 'camera-position-overlay';
+      overlay.style.position = 'fixed';
+      overlay.style.bottom = '20px';
+      overlay.style.right = '20px';
+      overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+      overlay.style.color = 'white';
+      overlay.style.padding = '10px';
+      overlay.style.borderRadius = '5px';
+      overlay.style.fontFamily = 'monospace';
+      overlay.style.zIndex = '1000';
+      overlay.style.transition = 'opacity 1s';
+      document.body.appendChild(overlay);
     }
+    
+    // Update the content and show the overlay
+    overlay.textContent = `Camera: (${x}, ${y}, ${z})`;
+    overlay.style.opacity = '1';
+    
+    // Hide the overlay after 3 seconds
+    setTimeout(() => {
+      overlay.style.opacity = '0';
+    }, 3000);
+  }
   
   setupCameraPositionTester() {
     // Create a simple UI for testing camera positions
@@ -181,8 +190,4 @@
     
     positionDisplay.textContent = `Camera: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`;
     targetDisplay.textContent = `Target: (${targetPos.x.toFixed(2)}, ${targetPos.y.toFixed(2)}, ${targetPos.z.toFixed(2)})`;
-  }
-
-
-}
-
+  }}

@@ -3,14 +3,17 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 export class ModelManager {
-  constructor(scene, camera, controls, hotspots, models, modelPath) {
+  constructor(scene, camera, controls, hotspots, modelPath = './public/models/Sauna Modeling Final.glb') {
     this.scene = scene; // Reference to the Three.js scene
     this.camera = camera; // Reference to the Three.js camera
     this.controls = controls; // Reference to the Three.js controls
-    this.hotspots = hotspots; // Array to store hotspots
-    this.models = models; // Array to store loaded models
-    this.modelPath = modelPath || './public/models/Sauna Modeling Final.glb'; // Path to the model files
+    this.hotspots = hotspots || []; // Array to store hotspots
+    this.modelPath = modelPath; // Path to the model files
     this.transparentMeshes = []; // Array to store meshes that should be transparent
+    this.model = null;
+    this.raycaster = new THREE.Raycaster();
+    this.mouse = new THREE.Vector2();
+    this.currentHotspot = null;
     
     // Initialize the GLTF loader  
     this.loadModel(); // Load the model when the class is instantiated
@@ -36,7 +39,7 @@ export class ModelManager {
     };
     
     loader.load(
-      this.modelPath,
+      './public/models/Sauna Modeling Final.glb',
       (gltf) => {
         console.log('GLTF data loaded:', gltf);
         this.model = gltf.scene;
@@ -204,6 +207,7 @@ export class ModelManager {
       new THREE.Vector3(0, 0.0, 0),
       true // This is an inside view
     );
+    
     this.createHotspot(
       new THREE.Vector3(0.3, 0.6, 0.4),
       'inside_area',
@@ -215,6 +219,7 @@ export class ModelManager {
       new THREE.Vector3(0.24, -0.00, 0.71),
       true // This is an inside view
     );
+    
     this.createHotspot(
       new THREE.Vector3(-0.3, 0.63, 0.4),
       'inside_area',
@@ -235,42 +240,32 @@ export class ModelManager {
     const hotspotGroup = new THREE.Group();
     hotspotGroup.position.copy(position);
     
-    // Outer white circle
-    const outerGeometry = new THREE.CircleGeometry(0.05, 32);
-    const outerMaterial = new THREE.MeshBasicMaterial({
+    // Create black outline circle (slightly larger than the white circle)
+    const outlineGeometry = new THREE.CircleGeometry(0.065, 32);
+    const outlineMaterial = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.8,
+      depthWrite: false
+    });
+    const outlineCircle = new THREE.Mesh(outlineGeometry, outlineMaterial);
+    outlineCircle.position.z = -0.001; // Slightly behind the white circle
+    
+    // Create white circle (main hotspot)
+    const circleGeometry = new THREE.CircleGeometry(0.06, 32);
+    const circleMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.9,
+      depthWrite: false
     });
-    const outerCircle = new THREE.Mesh(outerGeometry, outerMaterial);
+    const circle = new THREE.Mesh(circleGeometry, circleMaterial);
     
-    // Middle grey circle
-    const middleGeometry = new THREE.CircleGeometry(0.045, 32);
-    const middleMaterial = new THREE.MeshBasicMaterial({
-      color: 0x888888,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.9
-    });
-    const middleCircle = new THREE.Mesh(middleGeometry, middleMaterial);
-    middleCircle.position.z = 0.001;
-    
-    // Inner white circle
-    const innerGeometry = new THREE.CircleGeometry(0.015, 32);
-    const innerMaterial = new THREE.MeshBasicMaterial({
-      color: isInsideView ? 0x00ff00 : 0xffffff, // Green for inside view hotspots
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 1.0
-    });
-    const innerCircle = new THREE.Mesh(innerGeometry, innerMaterial);
-    innerCircle.position.z = 0.002;
-    
-    // Add all circles to the group
-    hotspotGroup.add(outerCircle);
-    hotspotGroup.add(middleCircle);
-    hotspotGroup.add(innerCircle);
+    // Add both circles to the group (outline first, then white circle)
+    hotspotGroup.add(outlineCircle);
+    hotspotGroup.add(circle);
     
     // Add metadata to the hotspot group with custom camera position if provided
     hotspotGroup.userData = {
@@ -284,7 +279,9 @@ export class ModelManager {
       lookAt: lookAt || position.clone(),
       isInsideView: isInsideView // Flag to identify inside view hotspots
     };
-    hotspotGroup.scale.set(0.8, 0.8, 0.8); // Initial scale for the hotspot
+    
+    // Set initial scale
+    hotspotGroup.scale.set(1, 1, 1);
     
     // Add to scene and hotspots array
     this.scene.add(hotspotGroup);
@@ -296,15 +293,184 @@ export class ModelManager {
     return hotspotGroup;
   }
   
-  // Method to handle hotspot clicks and make front meshes transparent when needed
+  // Method to handle hotspot clicks
+  handleHotspotClick(hotspot, cameraAnimator, infoPanel) {
+    if (this.animating) return;
+    
+    console.log("Handling hotspot click for:", hotspot);
+    this.currentHotspot = hotspot;
+    
+    // Store current camera position and controls target
+    this.cameraPositionBeforeHotspot = this.camera.position.clone();
+    this.targetPositionBeforeHotspot = this.controls.target.clone();
+    
+    if (hotspot.userData.isInsideView) {
+      // Make front meshes transparent
+      setTimeout(() => { 
+        this.setFrontMeshesTransparency(true);
+      }, 700); 
+    } else {
+      // Reset transparency for other hotspots
+      this.setFrontMeshesTransparency(false);
+    }
+    
+    // Disable controls during animation
+    this.controls.enabled = false;
+    this.animating = true;
+    
+    // Hide all other hotspots
+    this.hideHotspots(hotspot);
+    
+    // Get target camera position from hotspot
+    const targetPosition = hotspot.userData.cameraPosition;
+    const lookAtPosition = hotspot.userData.lookAt;
+    
+    console.log("Moving camera to:", targetPosition, "looking at:", lookAtPosition);
+    
+    // Animate camera to new position using the CameraAnimateClass
+    cameraAnimator.animateCamera(
+      this.camera.position.clone(),
+      targetPosition,
+      this.controls.target.clone(),
+      lookAtPosition,
+      1.0, // Animation duration in seconds
+      () => {
+        // Animation complete
+        this.controls.target.copy(lookAtPosition);
+        this.controls.enabled = false; // Keep controls disabled while info panel is open
+        this.animating = false;
+        
+        // Show info panel
+        infoPanel.showInfoPanel(hotspot.userData.title, hotspot.userData.description);
+      }
+    );
+  }
+  
+  returnToOriginalView(cameraAnimator, callback) {
+    if (!this.cameraPositionBeforeHotspot || !this.targetPositionBeforeHotspot) return;
+    
+    this.setFrontMeshesTransparency(false);
+    this.controls.enabled = false;
+    this.animating = true;
+    
+    cameraAnimator.animateCamera(
+      this.camera.position.clone(),
+      this.cameraPositionBeforeHotspot,
+      this.controls.target.clone(),
+      this.targetPositionBeforeHotspot,
+      1.0,
+      () => {
+        // Re-enable controls and show all hotspots
+        this.controls.enabled = true;
+        this.animating = false;
+        this.currentHotspot = null;
+        
+        // Show all hotspots again
+        this.showAllHotspots();
+        
+        if (callback) callback();
+      }
+    );
+  }
+  
+  hideHotspots(exceptHotspot = null) {
+    this.hotspots.forEach(hotspot => {
+      if (hotspot !== exceptHotspot) {
+        // Make the hotspot invisible
+        hotspot.visible = false;
+      }
+    });
+  }
 
+  // Add a method to show all hotspots
+  showAllHotspots() {
+    this.hotspots.forEach(hotspot => {
+      hotspot.visible = true;
+    });
+  }
   
   // Method to make front meshes transparent or opaque
-
+  setFrontMeshesTransparency(transparent) {
+    this.transparentMeshes.forEach(mesh => {
+      // Simply toggle the visibility of the mesh
+      mesh.visible = !transparent;
+    });
+  }
+  // Method to update hotspots appearance and check for hover
+  updateHotspots(mouse) {
+    // Make all hotspots face the camera
+    this.hotspots.forEach(hotspot => {
+      hotspot.lookAt(this.camera.position);
+      
+      // Add a pulsing effect to hotspots
+      const time = Date.now() * 0.001;
+      const pulse = Math.sin(time * 2) * 0.1 + 1;
+      hotspot.scale.set(pulse, pulse, pulse);
+      
+      if (hotspot.userData && hotspot.userData.isInsideView) {
+        // Ensure the hotspot renders on top of other objects
+        hotspot.renderOrder = 999;
+        hotspot.children.forEach(child => {
+          if (child.material) {
+            child.material.depthTest = false;
+            child.renderOrder = 1000;
+          }
+        });
+      }
+    });
+  }
   
-  // Method to check if ray intersects with a hotspot
-
+  checkHotspotHover(mouse) {
+    // Return if we're viewing a hotspot detail
+    if (this.currentHotspot) return;
+    
+    // Update raycaster with current mouse position and camera
+    this.raycaster.setFromCamera(mouse, this.camera);
+    
+    // Check for intersections with hotspots
+    const intersects = this.raycaster.intersectObjects(this.hotspots, true); // true to check descendants
+    
+    // Update cursor and scale based on hover state
+    if (intersects.length > 0) {
+      document.body.style.cursor = 'pointer';
+      // Find the parent hotspot group
+      let hotspotGroup = intersects[0].object;
+      while (hotspotGroup.parent && !this.hotspots.includes(hotspotGroup)) {
+        hotspotGroup = hotspotGroup.parent;
+      }
+      
+      // Highlight the entire hotspot group
+      hotspotGroup.scale.set(0.8, 0.8, 0.8);
+    } else {
+      document.body.style.cursor = 'auto';
+      // Reset scale of all hotspots
+      this.hotspots.forEach(hotspot => {
+        if (hotspot !== this.currentHotspot) {
+          // Just maintain the pulse scale
+          const time = Date.now() * 0.001;
+          const pulse = Math.sin(time * 2) * 0.1 + 1;
+          hotspot.scale.set(pulse, pulse, pulse);
+        }
+      });
+    }
+    
+    return intersects.length > 0 ? intersects : null;
+  }
   
-  // Method to update hotspot appearance based on camera position
-
+  // Method to check if a click hits a hotspot
+  checkHotspotClick(mouse) {
+    this.raycaster.setFromCamera(mouse, this.camera);
+    const intersects = this.raycaster.intersectObjects(this.hotspots, true);
+    
+    if (intersects.length > 0) {
+      // Find the parent hotspot group
+      let hotspotGroup = intersects[0].object;
+      while (hotspotGroup.parent && !this.hotspots.includes(hotspotGroup)) {
+        hotspotGroup = hotspotGroup.parent;
+      }
+      return hotspotGroup;
+    }
+    
+    return null;
+  }
 }
