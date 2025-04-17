@@ -10,6 +10,8 @@ export class ModelManager {
     this.hotspots = hotspots || []; // Array to store hotspots
     this.modelPath = modelPath; // Path to the model files
     this.transparentMeshes = []; // Array to store meshes that should be transparent
+    this.insideHotspots = []; // Array to store inside hotspots
+    this.outsideHotspots = []; // Array to store outside hotspots
     this.model = null;
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
@@ -18,9 +20,66 @@ export class ModelManager {
     this.hotspotCircles = []; // Array to store hotspot circle meshes for precise hover detection
     this.modelCenter = new THREE.Vector3(0, 0, 0); // Will be updated once model is loaded
     this.lastCameraPosition = new THREE.Vector3(); // Track camera position for view-based visibility
+    this.isInsideView = false; // Flag to track if we're in inside view
+    this.insideCameraPosition = null; // Store camera position when inside
+    this.insideCameraTarget = null; // Store camera target when inside
+    
+    // Create back button but keep it hidden initially
+    this.createBackButton();
     
     // Initialize the GLTF loader  
     this.loadModel(); // Load the model when the class is instantiated
+  }
+
+  createBackButton() {
+    // Create the back button
+    const backButton = document.createElement('button');
+    backButton.textContent = 'Go Back';
+    backButton.style.position = 'fixed';
+    backButton.style.top = '20px';
+    backButton.style.left = '20px';
+    backButton.style.padding = '10px 15px';
+    backButton.style.backgroundColor = '#333';
+    backButton.style.color = 'white';
+    backButton.style.border = 'none';
+    backButton.style.borderRadius = '5px';
+    backButton.style.fontSize = '16px';
+    backButton.style.cursor = 'pointer';
+    backButton.style.zIndex = '1000';
+    backButton.style.display = 'none'; // Hidden by default
+    backButton.id = 'back-button';
+    
+    // Add click event listener
+    backButton.addEventListener('click', () => {
+      this.handleBackButtonClick();
+    });
+    
+    // Add to document
+    document.body.appendChild(backButton);
+    this.backButton = backButton;
+  }
+  
+  handleBackButtonClick() {
+    // Play door close animation
+    if (this.resetDoorAnimation) {
+      this.resetDoorAnimation();
+    }
+    
+    // Hide the inside hotspots
+    this.toggleInsideHotspots(false);
+    
+    // Hide the back button
+    this.backButton.style.display = 'none';
+    
+    // After animation completes, return to original view
+    setTimeout(() => {
+      this.returnToOriginalView(this.scene.cameraAnimator);
+      this.isInsideView = false;
+      document.body.style.cursor = 'auto'; // Reset cursor just in case
+      // Reset stored inside camera position
+      this.insideCameraPosition = null;
+      this.insideCameraTarget = null;
+    }, 500); // Slight delay to let door animation start
   }
 
   loadModel() {
@@ -55,97 +114,93 @@ export class ModelManager {
         this.mixer = new THREE.AnimationMixer(this.model);
         
         // Log all animations found in the model
-    // Add this to your ModelManager class where you load animations
+        if (gltf.animations && gltf.animations.length > 0) {
+          console.log('Animations found:', gltf.animations.length);
+          
+          // Initialize animation storage
+          this.animations = {};
+          
+          gltf.animations.forEach((clip, index) => {
+            console.log(`Animation ${index}: ${clip.name}`, clip);
+            
+            // Store both animations by their exact names
+            if (clip.name === "ACT Sauna Front Glass Door") {
+              console.log("Found exact door animation by name");
+              this.animations.door = this.mixer.clipAction(clip);
+              this.animations.door.setLoop(THREE.LoopOnce);
+              this.animations.door.clampWhenFinished = true;
+              this.animations.door.timeScale = 1;
+            }
+            
+            if (clip.name === "Light BottomAction") {
+              console.log("Found light animation by name");
+              this.animations.light = this.mixer.clipAction(clip);
+              this.animations.light.setLoop(THREE.LoopOnce);
+              this.animations.light.clampWhenFinished = true;
+              this.animations.light.timeScale = 1;
+            }
+          });
+          
+          // Add methods to play animations
+          
+          // Door animation methods
+          this.playDoorAnimation = () => {
+            if (this.animations && this.animations.door) {
+              console.log('Playing door animation');
+              this.animations.door.reset();
+              this.animations.door.timeScale = 6.5; // Forward playback
+              this.animations.door.play();
+            } else {
+              console.warn('Door animation not available');
+            }
+          };
+          
+          this.resetDoorAnimation = () => {
+            if (this.animations && this.animations.door) {
+              console.log('Closing door animation');
+              this.animations.door.reset();
+              this.animations.door.timeScale = -1; // Reverse playback
+              this.animations.door.play();
+            } else {
+              console.warn('Door animation not available');
+            }
+          };
+          
+          // Light animation methods
+          this.playLightAnimation = () => {
+            if (this.animations && this.animations.light) {
+              console.log('Playing light animation');
+              this.animations.light.reset();
+              this.animations.light.timeScale = 1; // Forward playback
+              this.animations.light.play();
+            } else {
+              console.warn('Light animation not available');
+            }
+          };
+          
+          this.resetLightAnimation = () => {
+            if (this.animations && this.animations.light) {
+              console.log('Resetting light animation');
+              this.animations.light.reset();
+              this.animations.light.timeScale = -1; // Reverse playback
+              this.animations.light.play();
+            } else {
+              console.warn('Light animation not available');
+            }
+          };
+          
+          // Method to play all animations sequentially
+          this.playAllAnimations = () => {
+            this.playDoorAnimation();
+            
+            // Play light animation after door animation
+            const doorDuration = this.animations.door.getClip().duration * 1000 / 4.5; // Convert to ms and adjust for speed
+            setTimeout(() => {
+              this.playLightAnimation();
+            }, doorDuration);
+          };
 
-// In your loadModel method, replace the animation section with this:
-if (gltf.animations && gltf.animations.length > 0) {
-  console.log('Animations found:', gltf.animations.length);
-  
-  // Initialize animation storage
-  this.animations = {};
-  
-  gltf.animations.forEach((clip, index) => {
-    console.log(`Animation ${index}: ${clip.name}`, clip);
-    
-    // Store both animations by their exact names
-    if (clip.name === "ACT Sauna Front Glass Door") {
-      console.log("Found exact door animation by name");
-      this.animations.door = this.mixer.clipAction(clip);
-      this.animations.door.setLoop(THREE.LoopOnce);
-      this.animations.door.clampWhenFinished = true;
-      this.animations.door.timeScale = 1;
-    }
-    
-    if (clip.name === "Light BottomAction") {
-      console.log("Found light animation by name");
-      this.animations.light = this.mixer.clipAction(clip);
-      this.animations.light.setLoop(THREE.LoopOnce);
-      this.animations.light.clampWhenFinished = true;
-      this.animations.light.timeScale = 1;
-    }
-  });
-  
-  // Add methods to play animations
-  
-  // Door animation methods
-  this.playDoorAnimation = () => {
-    if (this.animations && this.animations.door) {
-      console.log('Playing door animation');
-      this.animations.door.reset();
-      this.animations.door.timeScale = 4.5; // Forward playback
-      this.animations.door.play();
-    } else {
-      console.warn('Door animation not available');
-    }
-  };
-  
-  this.resetDoorAnimation = () => {
-    if (this.animations && this.animations.door) {
-      console.log('Closing door animation');
-      this.animations.door.reset();
-      this.animations.door.timeScale = -1; // Reverse playback
-      this.animations.door.play();
-    } else {
-      console.warn('Door animation not available');
-    }
-  };
-  
-  // Light animation methods
-  this.playLightAnimation = () => {
-    if (this.animations && this.animations.light) {
-      console.log('Playing light animation');
-      this.animations.light.reset();
-      this.animations.light.timeScale = 1; // Forward playback
-      this.animations.light.play();
-    } else {
-      console.warn('Light animation not available');
-    }
-  };
-  
-  this.resetLightAnimation = () => {
-    if (this.animations && this.animations.light) {
-      console.log('Resetting light animation');
-      this.animations.light.reset();
-      this.animations.light.timeScale = -1; // Reverse playback
-      this.animations.light.play();
-    } else {
-      console.warn('Light animation not available');
-    }
-  };
-  
-  // Method to play all animations sequentially
-  // this.playAllAnimations = () => {
-  //   this.playDoorAnimation();
-    
-  //   // Play light animation after door animation
-  //   const doorDuration = this.animations.door.getClip().duration * 1000; // Convert to ms
-  //   setTimeout(() => {
-  //     this.playLightAnimation();
-  //   }, doorDuration);
-  // };
-
-  this.playDoorAnimation();
-} else {
+        } else {
           console.log('No animations found in the model');
         }
         
@@ -165,7 +220,9 @@ if (gltf.animations && gltf.animations.length > 0) {
           'Hinge_01-3001',
           'Magnet_01',
           'Magnet_02',
-          'Sphere'
+          'Sphere',
+          "Object_0_1",
+          "Object_0"
         ];
         
         // Traverse all objects in the model
@@ -239,19 +296,35 @@ if (gltf.animations && gltf.animations.length > 0) {
       onError
     );
   }
+  
   update(deltaTime) {
     // Update the animation mixer in your render/animation loop
     if (this.mixer) {
       this.mixer.update(deltaTime);
     }
-    
-    // Your existing update code...
   }
   
   addModelHotspots() {
+    // Create the special "Open Door" hotspot
+    const openDoorHotspot = this.createHotspot(
+      new THREE.Vector3(-0.1, -0.1, -0.65), // Positioned for Open Door
+      'door_action',
+      'Open Door',
+      'Click to open the door and enter the sauna',
+      // Camera position when inside the sauna (will be set when clicked)
+      new THREE.Vector3(-0.01, 0.83, -1.11),
+      // Look at the inside of the sauna
+      new THREE.Vector3(-0.05, -0.00, 0.65),
+      false, // Not an inside view (but will trigger it)
+      true // This is a special action hotspot
+    );
+    
+    // Add to outside hotspots
+    this.outsideHotspots.push(openDoorHotspot);
+    
     // Deepest Detox - Front view (Outside view)
-    this.createHotspot(
-      new THREE.Vector3(-0.4, 0, -0.65),
+    const glassHotspot = this.createHotspot(
+      new THREE.Vector3(-0.4, 0.3, -0.65), // Moved up by +0.3 on Y axis
       'front_area',
       'Glass Door',
       '8mm Tinted Tempered Glass – Privacy meets strength.',
@@ -262,8 +335,10 @@ if (gltf.animations && gltf.animations.length > 0) {
       false // Not an inside view
     );
     
+    this.outsideHotspots.push(glassHotspot);
+    
     // Infrared Heating - Side view
-    this.createHotspot(
+    const doorFrameHotspot = this.createHotspot(
       new THREE.Vector3(0, 1, -0.7),
       'top_area',
       'Around Door Frame',
@@ -275,8 +350,10 @@ if (gltf.animations && gltf.animations.length > 0) {
       false // Not an inside view
     );
     
+    this.outsideHotspots.push(doorFrameHotspot);
+    
     // Easy Assembly - Bottom view from angle
-    this.createHotspot(
+    const sidePanelHotspot = this.createHotspot(
       new THREE.Vector3(-0.7, 0.2, 0),
       'right_area',
       'Side Panel ',
@@ -287,9 +364,11 @@ if (gltf.animations && gltf.animations.length > 0) {
       new THREE.Vector3(0, 0, 0),
       false // Not an inside view
     );
+    
+    this.outsideHotspots.push(sidePanelHotspot);
   
     // Chromotherapy - Interior top view
-    this.createHotspot(
+    const steelBandsHotspot = this.createHotspot(
       new THREE.Vector3(0.73, 0.2, -0.4),
       'left_area',
       'Stainless Steel Bands',
@@ -300,9 +379,11 @@ if (gltf.animations && gltf.animations.length > 0) {
       new THREE.Vector3(-0.18, 0.00, -0.56),
       false // Not an inside view
     );
+    
+    this.outsideHotspots.push(steelBandsHotspot);
   
     // Sound System - Side interior view
-    this.createHotspot(
+    const ventGratesHotspot = this.createHotspot(
       new THREE.Vector3(-0.5, 0, 0.65),
       'back_area',
       'Vent Grates',
@@ -313,8 +394,10 @@ if (gltf.animations && gltf.animations.length > 0) {
       new THREE.Vector3(0, 0.0, 0),
       false // Not an inside view
     );
+    
+    this.outsideHotspots.push(ventGratesHotspot);
 
-    this.createHotspot(
+    const rearVentHotspot = this.createHotspot(
       new THREE.Vector3(-0.16, 0.85, 0.65),
       'back_area',
       'Rear Vent',
@@ -325,21 +408,27 @@ if (gltf.animations && gltf.animations.length > 0) {
       new THREE.Vector3(0.33, 0.00, -0.72),
       false // Not an inside view
     );
+    
+    this.outsideHotspots.push(rearVentHotspot);
 
+    // INSIDE VIEW HOTSPOTS - These will be hidden by default
+    
     // Inside view hotspot - visible through front meshes
-    this.createHotspot(
+    const backrestHotspot = this.createHotspot(
       new THREE.Vector3(0, 0.1, 0.1),
       'inside_area',
       'Upper Bench Backrest',
       'Ergonomic Backrest – Relax deeper, sit longer.',
       // Camera position for speaker view
-      new THREE.Vector3(-0.01, 0.59, -1.44), // Positioned inside the sauna
+      new THREE.Vector3(-0.01, 0.59, -1.0), // Positioned inside the sauna
       // Look at the speaker system
       new THREE.Vector3(0, 0.0, 0),
       true // This is an inside view
     );
     
-    this.createHotspot(
+    this.insideHotspots.push(backrestHotspot);
+    
+    const lightStripHotspot = this.createHotspot(
       new THREE.Vector3(0.3, 0.6, 0.4),
       'inside_area',
       'Light Strip',
@@ -351,7 +440,9 @@ if (gltf.animations && gltf.animations.length > 0) {
       true // This is an inside view
     );
     
-    this.createHotspot(
+    this.insideHotspots.push(lightStripHotspot);
+    
+    const heaterControlHotspot = this.createHotspot(
       new THREE.Vector3(-0.3, 0.63, 0.4),
       'inside_area',
       'Wall Box (Heater Control)',
@@ -362,9 +453,47 @@ if (gltf.animations && gltf.animations.length > 0) {
       new THREE.Vector3(-0.45, 0.00, 1.14),
       true // This is an inside view
     );
+    
+    this.insideHotspots.push(heaterControlHotspot);
+    
+    // Hide inside hotspots by default
+    this.toggleInsideHotspots(false);
+    
+    // Make inside hotspots smaller
+    this.resizeInsideHotspots(0.6);
   }
   
-  createHotspot(position, meshName, title, description, cameraPosition = null, lookAt = null, isInsideView = false) {
+  toggleInsideHotspots(show) {
+    this.insideHotspots.forEach(hotspot => {
+      hotspot.visible = show;
+    });
+  }
+
+  // New method to make inside hotspots smaller
+  resizeInsideHotspots(scale) {
+    this.insideHotspots.forEach(hotspot => {
+      hotspot.scale.set(scale, scale, scale);
+    });
+  }
+  
+  // Method to make a specific hotspot smaller when clicked
+  makeHotspotSmaller(hotspot) {
+    // Make the hotspot smaller (about 60% of original size)
+    hotspot.scale.set(0.6, 0.6, 0.6);
+  }
+  
+  // Method to reset hotspot size
+  resetHotspotSize(hotspot) {
+    if (this.isInsideView && this.insideHotspots.includes(hotspot)) {
+      // If it's an inside hotspot, set it to the inside scale
+      hotspot.scale.set(0.7, 0.7, 0.7);
+    } else {
+      // Otherwise reset to normal size
+      hotspot.scale.set(1.1, 1.1, 1.1);
+    }
+  }
+  
+  createHotspot(position, meshName, title, description, cameraPosition = null, lookAt = null, isInsideView = false, isActionHotspot = false) {
     console.log(`Creating hotspot at position: ${position.x}, ${position.y}, ${position.z}`);
     
     // Create a group to hold the hotspot elements
@@ -375,7 +504,7 @@ if (gltf.animations && gltf.animations.length > 0) {
     // Create black outline circle (slightly larger than the white circle)
     const outlineGeometry = new THREE.CircleGeometry(0.065, 32);
     const outlineMaterial = new THREE.MeshBasicMaterial({
-      color: 0x000000,
+      color:  0x000000, // Green outline for action hotspots
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.8,
@@ -389,7 +518,7 @@ if (gltf.animations && gltf.animations.length > 0) {
     // Create white circle (main hotspot)
     const circleGeometry = new THREE.CircleGeometry(0.06, 32);
     const circleMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
+      color:  0xffffff, // Light green fill for action hotspots
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.9,
@@ -441,7 +570,7 @@ if (gltf.animations && gltf.animations.length > 0) {
     context.arc(canvas.width/2 - rectWidth/2 + cornerRadius, canvas.height/2, cornerRadius, Math.PI/2, -Math.PI/2);
     context.closePath();
     
-    // Fill with white
+    // Fill with white or light green for action hotspots
     context.fillStyle = 'white';
     context.fill();
     
@@ -512,6 +641,7 @@ if (gltf.animations && gltf.animations.length > 0) {
       // Use custom lookAt if provided, otherwise use the hotspot position
       lookAt: lookAt || position.clone(),
       isInsideView: isInsideView, // Flag to identify inside view hotspots
+      isActionHotspot: isActionHotspot, // Flag for special action hotspots
       labelMesh: labelGroup, // Reference to the label for animations
       areaType: meshName, // Store the area type for view-based visibility
       // Store materials for opacity changes
@@ -568,18 +698,20 @@ if (gltf.animations && gltf.animations.length > 0) {
   
   // Update hotspot visibility based on the current viewing side
   updateHotspotVisibilityBySide() {
+    // If we're in inside view, don't update outside hotspots
+    if (this.isInsideView) return;
+    
     // Get the current viewing side
     const side = this.determineViewingSide();
     
     // Set visibility for each hotspot based on its area type and the current viewing side
-    this.hotspots.forEach(hotspot => {
+    this.outsideHotspots.forEach(hotspot => {
       const areaType = hotspot.userData.areaType;
-      const isInsideView = hotspot.userData.isInsideView;
       let opacity = 1.0;
       
       if (side === 'front') {
         // When viewing from front, show front, top, and inside hotspots
-        if (areaType !== 'front_area' && areaType !== 'top_area' && areaType !== 'inside_area') {
+        if (areaType !== 'front_area' && areaType !== 'top_area' && areaType !== 'door_action') {
           opacity = 0.3; // Make other hotspots semi-transparent
         }
       } else if (side === 'back') {
@@ -599,23 +731,24 @@ if (gltf.animations && gltf.animations.length > 0) {
         }
       }
       
-      // Inside view hotspots are always visible
-      
-      if (isInsideView) {
-        // Only show inside hotspots when viewing from the front
-        if (side !== 'front') {
-          opacity = 0.3;
-        }
+      // Door action hotspot is always fully visible
+      if (hotspot.userData.isActionHotspot) {
+        opacity = 1.0;
       }
+      
       // Update the opacity of the hotspot's materials
       hotspot.children.forEach(child => {
         if (child.material) {
           // Set opacity based on the material type
-          if (child.material.color.equals(new THREE.Color(0x000000))) {
+          if (child.material.color.equals(new THREE.Color(0x00ff00))) {
+            // Green outline (action hotspot)
+            child.material.opacity = opacity * 0.8;
+          } else if (child.material.color.equals(new THREE.Color(0x000000))) {
             // Black outline (lower base opacity)
             child.material.opacity = opacity * 0.8;
-          } else if (child.material.color.equals(new THREE.Color(0xffffff))) {
-            // White circle
+          } else if (child.material.color.equals(new THREE.Color(0xffffff)) || 
+                     child.material.color.equals(new THREE.Color(0xaaffaa))) {
+            // White circle or light green circle (action hotspot)
             child.material.opacity = opacity * 0.9;
           } else {
             // Other materials
@@ -632,20 +765,36 @@ if (gltf.animations && gltf.animations.length > 0) {
     
     console.log("Handling hotspot click for:", hotspot);
     this.currentHotspot = hotspot;
+    
+    // Make this hotspot smaller
+    this.makeHotspotSmaller(hotspot);
+    
     if (hotspot.userData && hotspot.userData.labelMesh) {
       hotspot.userData.labelMesh.visible = false;
     }
-    // Store current camera position and controls target
-    this.cameraPositionBeforeHotspot = this.camera.position.clone();
-    this.targetPositionBeforeHotspot = this.controls.target.clone();
+    
+    // Check if this is the open door action hotspot
+    if (hotspot.userData.isActionHotspot && hotspot.userData.title === "Open Door") {
+      this.handleOpenDoorHotspot(hotspot, cameraAnimator);
+      return;
+    }
+    
+    // For inside hotspots, keep track of where we were before clicking
+    if (hotspot.userData.isInsideView && this.isInsideView) {
+      // We're already inside, so store the current inside camera position
+      this.cameraPositionBeforeInfoPanel = this.camera.position.clone();
+      this.targetPositionBeforeInfoPanel = this.controls.target.clone();
+    } else {
+      // For outside hotspots, store the normal outside position
+      this.cameraPositionBeforeHotspot = this.camera.position.clone();
+      this.targetPositionBeforeHotspot = this.controls.target.clone();
+    }
     
     if (hotspot.userData.isInsideView) {
-      // Make front meshes transparent
-      setTimeout(() => { 
-        this.setFrontMeshesTransparency(true);
-      }, 700); 
-    } else {
-      // Reset transparency for other hotspots
+      // Make front meshes transparent (they should already be, but just in case)
+      this.setFrontMeshesTransparency(true);
+    } else if (!this.isInsideView) {
+      // Only reset transparency if we're not inside
       this.setFrontMeshesTransparency(false);
     }
     
@@ -653,8 +802,14 @@ if (gltf.animations && gltf.animations.length > 0) {
     this.controls.enabled = false;
     this.animating = true;
     
-    // Hide all other hotspots
-    this.hideHotspots(hotspot);
+    // Hide other hotspots, but keep inside hotspots visible if we're inside
+    if (this.isInsideView && hotspot.userData.isInsideView) {
+      // If we're inside and clicking an inside hotspot, only hide other inside hotspots
+      this.hideOtherInsideHotspots(hotspot);
+    } else {
+      // Otherwise hide all other hotspots
+      this.hideHotspots(hotspot);
+    }
     
     // Get target camera position from hotspot
     const targetPosition = hotspot.userData.cameraPosition;
@@ -683,8 +838,129 @@ if (gltf.animations && gltf.animations.length > 0) {
     );
   }
   
+  // Special handler for the open door hotspot
+  handleOpenDoorHotspot(hotspot, cameraAnimator) {
+    // Store current camera position for back button
+    this.cameraPositionBeforeHotspot = this.camera.position.clone();
+    this.targetPositionBeforeHotspot = this.controls.target.clone();
+    
+    // Hide all hotspots
+    this.hideHotspots();
+    
+    // Disable controls during animation
+    this.controls.enabled = false;
+    this.animating = true;
+    
+    // Play door animation
+    if (this.playDoorAnimation) {
+      this.playDoorAnimation();
+    }
+    
+    // Set flag that we're in inside view
+    this.isInsideView = true;
+    
+    // Wait for door to open a bit before moving camera inside
+    setTimeout(() => {
+      // Get target camera position from hotspot
+      const targetPosition = hotspot.userData.cameraPosition; // Inside position
+      const lookAtPosition = hotspot.userData.lookAt; // Inside target
+      
+      // Store these positions for when returning from info panels
+      this.insideCameraPosition = targetPosition.clone();
+      this.insideCameraTarget = lookAtPosition.clone();
+      
+      // Animate camera to inside position
+      cameraAnimator.animateCamera(
+        this.camera.position.clone(),
+        targetPosition,
+        this.controls.target.clone(),
+        lookAtPosition,
+        1.0, // Animation duration in seconds
+        () => {
+          // Animation complete
+          this.controls.target.copy(lookAtPosition);
+          // Keep controls disabled to prevent user from panning/zooming too much inside
+          this.controls.enabled = false; 
+          this.animating = false;
+          
+          // Make front meshes invisible
+          this.setFrontMeshesTransparency(true);
+          
+          // Show inside hotspots
+          this.toggleInsideHotspots(true);
+          
+          // Reset cursor to normal (not hand pointer)
+          document.body.style.cursor = 'auto';
+          
+          // Show the back button
+          this.backButton.style.display = 'block';
+        }
+      );
+    }, 400); // Wait a bit for the door to start opening
+  }
+  
+// Replace returnFromInfoPanelInsideView method
+returnFromInfoPanelInsideView(cameraAnimator) {
+  if (!this.cameraPositionBeforeInfoPanel || !this.targetPositionBeforeInfoPanel) {
+    // If no position stored, use the default inside position
+    if (this.insideCameraPosition && this.insideCameraTarget) {
+      this.cameraPositionBeforeInfoPanel = this.insideCameraPosition;
+      this.targetPositionBeforeInfoPanel = this.insideCameraTarget;
+    } else {
+      // If still no position, just return
+      return;
+    }
+  }
+  
+  this.controls.enabled = false;
+  this.animating = true;
+  
+  // Reset any hotspot that was made smaller
+  if (this.currentHotspot) {
+    this.resetHotspotSize(this.currentHotspot);
+    // Explicitly clear current hotspot to enable hovering again
+    this.currentHotspot = null;
+  }
+  
+  // Front meshes should remain hidden since we're still inside
+  this.setFrontMeshesTransparency(true);
+  
+  cameraAnimator.animateCamera(
+    this.camera.position.clone(),
+    this.cameraPositionBeforeInfoPanel,
+    this.controls.target.clone(),
+    this.targetPositionBeforeInfoPanel,
+    1.0,
+    () => {
+      // Re-enable limited controls inside
+      this.controls.enabled = false; // Keep disabled inside
+      this.animating = false;
+      
+      // Show all inside hotspots again
+      this.toggleInsideHotspots(true);
+      
+      // Make sure outside hotspots remain hidden
+      this.hideOutsideHotspots();
+      
+      // Reset cursor to normal
+      document.body.style.cursor = 'auto';
+      
+      // Reset hoveredHotspot to null to ensure clean hover state
+      this.hoveredHotspot = null;
+      
+      // Keep back button visible
+      this.backButton.style.display = 'block';
+    }
+  );
+}
+  
   returnToOriginalView(cameraAnimator, callback) {
     if (!this.cameraPositionBeforeHotspot || !this.targetPositionBeforeHotspot) return;
+    
+    // Reset any hotspot that was made smaller
+    if (this.currentHotspot) {
+      this.resetHotspotSize(this.currentHotspot);
+    }
     
     this.setFrontMeshesTransparency(false);
     this.controls.enabled = false;
@@ -702,8 +978,11 @@ if (gltf.animations && gltf.animations.length > 0) {
         this.animating = false;
         this.currentHotspot = null;
         
-        // Show all hotspots again
+        // Show all outside hotspots again
         this.showAllHotspots();
+        
+        // Reset cursor
+        document.body.style.cursor = 'auto';
         
         // Update hotspot visibility based on viewing side
         this.updateHotspotVisibilityBySide();
@@ -721,10 +1000,27 @@ if (gltf.animations && gltf.animations.length > 0) {
       }
     });
   }
+  
+  hideOutsideHotspots() {
+    this.outsideHotspots.forEach(hotspot => {
+      hotspot.visible = false;
+    });
+  }
+  
+  // New method to hide other inside hotspots except the clicked one
+  hideOtherInsideHotspots(exceptHotspot = null) {
+    this.insideHotspots.forEach(hotspot => {
+      if (hotspot !== exceptHotspot) {
+        // Make the hotspot invisible
+        hotspot.visible = false;
+      }
+    });
+  }
 
   // Method to show all hotspots
   showAllHotspots() {
-    this.hotspots.forEach(hotspot => {
+    // Show only outside hotspots by default
+    this.outsideHotspots.forEach(hotspot => {
       hotspot.visible = true;
       
       // Make sure labels are hidden
@@ -733,6 +1029,13 @@ if (gltf.animations && gltf.animations.length > 0) {
         labelGroup.visible = false;
       }
     });
+    
+    // If we're inside, show inside hotspots
+    if (this.isInsideView) {
+      this.toggleInsideHotspots(true);
+    } else {
+      this.toggleInsideHotspots(false);
+    }
     
     // Reset hovered hotspot
     this.hoveredHotspot = null;
@@ -760,55 +1063,72 @@ if (gltf.animations && gltf.animations.length > 0) {
     }
   }
   
-  checkHotspotHover(mouse) {
-    // Return if we're viewing a hotspot detail
-    if (this.currentHotspot) return;
+// Replace checkHotspotHover method
+checkHotspotHover(mouse) {
+  // Only return if we're viewing a hotspot detail and NOT in inside view
+  // This allows hovering to work inside the sauna
+  if (this.currentHotspot && !this.isInsideView) {
+    return;
+  }
+  
+  // Update raycaster with current mouse position and camera
+  this.raycaster.setFromCamera(mouse, this.camera);
+  
+  // Get visible hotspot circles (outside or inside depending on view)
+  const visibleHotspotCircles = this.hotspotCircles.filter(circle => {
+    const hotspot = circle.userData.parentHotspot;
+    return hotspot.visible;
+  });
+  
+  // Check for intersections with visible hotspot circles only
+  const intersects = this.raycaster.intersectObjects(visibleHotspotCircles, false);
+  
+  // Update cursor and scale based on hover state
+  if (intersects.length > 0) {
+    document.body.style.cursor = 'pointer';
     
-    // Update raycaster with current mouse position and camera
-    this.raycaster.setFromCamera(mouse, this.camera);
+    // Get the parent hotspot group from the intersected circle
+    const hotspotGroup = intersects[0].object.userData.parentHotspot;
     
-    // Check for intersections with hotspot circles only
-    const intersects = this.raycaster.intersectObjects(this.hotspotCircles, false);
-    
-    // Update cursor and scale based on hover state
-    if (intersects.length > 0) {
-      document.body.style.cursor = 'pointer';
-      
-      // Get the parent hotspot group from the intersected circle
-      const hotspotGroup = intersects[0].object.userData.parentHotspot;
-      
-      // Update hovered hotspot and show its label
-      if (this.hoveredHotspot !== hotspotGroup) {
-        // Hide previous hotspot label if any
-        if (this.hoveredHotspot && this.hoveredHotspot.userData.labelMesh) {
-          this.hoveredHotspot.userData.labelMesh.visible = false;
-        }
-        
-        // Set new hovered hotspot and show its label
-        this.hoveredHotspot = hotspotGroup;
-        if (hotspotGroup.userData.labelMesh) {
-          hotspotGroup.userData.labelMesh.visible = true;
-        }
-      }
-    } else {
-      document.body.style.cursor = 'auto';
-      
-      // Hide label of previously hovered hotspot if any
+    // Update hovered hotspot and show its label
+    if (this.hoveredHotspot !== hotspotGroup) {
+      // Hide previous hotspot label if any
       if (this.hoveredHotspot && this.hoveredHotspot.userData.labelMesh) {
         this.hoveredHotspot.userData.labelMesh.visible = false;
       }
       
-      // Reset hovered hotspot
-      this.hoveredHotspot = null;
+      // Set new hovered hotspot and show its label
+      this.hoveredHotspot = hotspotGroup;
+      if (hotspotGroup.userData.labelMesh) {
+        hotspotGroup.userData.labelMesh.visible = true;
+      }
+    }
+  } else {
+    document.body.style.cursor = 'auto';
+    
+    // Hide label of previously hovered hotspot if any
+    if (this.hoveredHotspot && this.hoveredHotspot.userData.labelMesh) {
+      this.hoveredHotspot.userData.labelMesh.visible = false;
     }
     
-    return intersects.length > 0 ? intersects : null;
+    // Reset hovered hotspot
+    this.hoveredHotspot = null;
   }
+  
+  return intersects.length > 0 ? intersects : null;
+}
   
   // Method to check if a click hits a hotspot
   checkHotspotClick(mouse) {
     this.raycaster.setFromCamera(mouse, this.camera);
-    const intersects = this.raycaster.intersectObjects(this.hotspotCircles, false);
+    
+    // Get visible hotspot circles (outside or inside depending on view)
+    const visibleHotspotCircles = this.hotspotCircles.filter(circle => {
+      const hotspot = circle.userData.parentHotspot;
+      return hotspot.visible;
+    });
+    
+    const intersects = this.raycaster.intersectObjects(visibleHotspotCircles, false);
     
     if (intersects.length > 0) {
       // Get the parent hotspot group from the intersected circle

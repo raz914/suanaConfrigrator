@@ -9,7 +9,7 @@ export class CameraAnimateClass {
     this.animating = false;
     
     // Optional: Add camera position tester
-    this.setupCameraPositionTester();
+    // this.setupCameraPositionTester();
   }
   
   easeInOutCubic(t) {

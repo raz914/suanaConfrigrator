@@ -3,7 +3,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ModelManager } from './src/scripts/ModelManager.js';
 import { CameraAnimateClass } from './src/scripts/CameraAnimateClass.js';
 import { InfoPanelClass } from './src/scripts/InfoPanelClass.js';
-import { deltaTime } from 'three/tsl';
 
 export class SuanaConfig {
   constructor(scene, camera, renderer, modelPath = './public/models/Untitled.glb') {
@@ -32,10 +31,10 @@ export class SuanaConfig {
     
     // Set up mouse events
     this.setupMouseEvents();
-    // this.setupMouseEvents();
 
-// Add this line:
-this.setupAnimationControls();
+    // Add animation controls
+    // this.setupAnimationControls();
+    
     // Start the animation loop
     this.animate();
   }
@@ -58,8 +57,14 @@ this.setupAnimationControls();
     
     // Set callback for when info panel is closed
     this.infoPanel.setOnCloseCallback(() => {
-      // Return to original camera view
-      this.modelManager.returnToOriginalView(this.cameraAnimator);
+      // Check if we're in inside view
+      if (this.modelManager.isInsideView) {
+        // If we're inside the sauna, return to the inside camera position
+        this.modelManager.returnFromInfoPanelInsideView(this.cameraAnimator);
+      } else {
+        // If we're outside, return to original view
+        this.modelManager.returnToOriginalView(this.cameraAnimator);
+      }
     });
     
     // Initialize the model manager class
@@ -79,8 +84,52 @@ this.setupAnimationControls();
 
   createScene() {
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x333333);
+    
+    // Create a gradient background using a custom shader
+    const gradientTexture = this.createGradientTexture();
+    scene.background = gradientTexture;
+    // scene.background = new THREE.Color(0x333333);
+
+    
     return scene;
+  }
+  
+  // Add this new method to SuanaConfig class
+  createGradientTexture() {
+    // Create a canvas for the gradient
+    const canvas = document.createElement('canvas');
+    canvas.width = 2;
+    canvas.height = 512;
+    
+    const context = canvas.getContext('2d');
+    
+    // Create gradient
+    const gradient = context.createLinearGradient(0, 0, 0, 512);
+    
+    // Add color stops
+    // You can customize these colors to get your desired gradient#ffe032#d3b36f    #a0a0a0 
+    gradient.addColorStop(0, '#d3b36f'); // Light blue at top
+    gradient.addColorStop(0.7, '#d9e8f7'); // Light color in middle
+    gradient.addColorStop(1, '#a0a0a0'); // Darker gray at bottom
+    
+    // Fill with gradient
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, 2, 512);
+    
+    // Create texture
+    const texture = new THREE.CanvasTexture(
+      canvas,
+      THREE.UVMapping,
+      THREE.ClampToEdgeWrapping,
+      THREE.ClampToEdgeWrapping,
+      THREE.LinearFilter,
+      THREE.LinearFilter
+    );
+    
+    // Only need to repeat horizontally
+    texture.repeat.set(1, 1);
+    
+    return texture;
   }
   
   createCamera() {
@@ -183,6 +232,7 @@ this.setupAnimationControls();
       }
     });
   }
+  
   setupAnimationControls() {
     // Create animation control panel
     const controlPanel = document.createElement('div');
@@ -309,16 +359,12 @@ this.setupAnimationControls();
       
       // Check for hotspot hover
       this.modelManager.checkHotspotHover(this.mouse);
-    //   if(this.modelManager.mixer){
-    //   // this.modelManager.update(deltaTime)
-    // }
-    
     }
-    if(this.modelManager.mixer){
-
+    
+    // Update animations
+    if(this.modelManager.mixer) {
       const delta = this.clock.getDelta();
       this.modelManager.update(delta);
-    
     }
     
     // Render the scene
