@@ -49,7 +49,7 @@ export class SuanaConfig {
     // this.createTestHotspot();
     this.modelManager = new ModelManager(this.scene, this.camera, this.controls,this.hotspots,modelPath = './public/models/Untitled.glb');
     this.cameraAnimateClass = new CameraAnimateClass(this.scene, this.camera, this.renderer,this.controls);
-    
+    this.scene.modelManagerIns = this.modelManager;
     // this.modelManager.loadModel();
     
     // Start the animation loop

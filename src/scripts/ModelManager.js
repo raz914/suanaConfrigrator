@@ -297,88 +297,14 @@ export class ModelManager {
   }
   
   // Method to handle hotspot clicks and make front meshes transparent when needed
-  handleHotspotClick(hotspot) {
-    if (hotspot && hotspot.userData) {
-      // Check if this is an inside view hotspot
-      if (hotspot.userData.isInsideView) {
-        // Make front meshes transparent
-        console.log("Inside view hotspot clicked:", hotspot.userData.title);
-        setTimeout(() => { 
 
-
-          this.setFrontMeshesTransparency(true);
-
-                  }, 4000); // Delay for 1 second before making transparent
-      } else {
-        // Reset transparency for other hotspots
-        this.setFrontMeshesTransparency(false);
-      }
-      
-      // Position camera to view the hotspot
-      if (hotspot.userData.cameraPosition && this.camera && this.controls) {
-        this.camera.position.copy(hotspot.userData.cameraPosition);
-        this.controls.target.copy(hotspot.userData.lookAt);
-        this.controls.update();
-      }
-    }
-  }
   
   // Method to make front meshes transparent or opaque
-  setFrontMeshesTransparency(transparent) {
-    this.transparentMeshes.forEach(mesh => {
-      // Simply toggle the visibility of the mesh
-      mesh.visible = !transparent;
-    });
-  }
+
   
   // Method to check if ray intersects with a hotspot
-  checkHotspotIntersection(raycaster) {
-    // Get all objects in the scene that the raycaster intersects with
-    const intersects = raycaster.intersectObjects(this.scene.children, true);
-    
-    // Filter for hotspots
-    for (let i = 0; i < intersects.length; i++) {
-      let object = intersects[i].object;
-      
-      // Check if the object is a hotspot or part of a hotspot
-      while (object && object !== this.scene) {
-        if (object.userData && object.userData.type === 'hotspot') {
-          return object;
-        }
-        object = object.parent;
-      }
-    }
-    
-    return null;
-  }
+
   
   // Method to update hotspot appearance based on camera position
-  updateHotspots() {
-    // This method should be called in an animation loop
-    if (!this.camera || !this.hotspots) return;
-    
-    const cameraPosition = this.camera.position.clone();
-    
-    this.hotspots.forEach(hotspot => {
-      // Make hotspots always face the camera (billboard effect)
-      hotspot.lookAt(cameraPosition);
-      
-      // Scale hotspots based on distance to camera for consistent visual size
-      const distance = hotspot.position.distanceTo(cameraPosition);
-      const scale = Math.max(0.5, Math.min(1.5, distance * 0.2));
-      hotspot.scale.set(scale, scale, scale);
-      
-      // For inside view hotspots, ensure they're visible through front meshes
-      if (hotspot.userData && hotspot.userData.isInsideView) {
-        // Ensure the hotspot renders on top of other objects
-        hotspot.renderOrder = 999;
-        hotspot.children.forEach(child => {
-          if (child.material) {
-            child.material.depthTest = false;
-            child.renderOrder = 1000;
-          }
-        });
-      }
-    });
-  }
+
 }
