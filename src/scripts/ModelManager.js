@@ -14,6 +14,10 @@ export class ModelManager {
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
     this.currentHotspot = null;
+    this.hoveredHotspot = null; // Track currently hovered hotspot
+    this.hotspotCircles = []; // Array to store hotspot circle meshes for precise hover detection
+    this.modelCenter = new THREE.Vector3(0, 0, 0); // Will be updated once model is loaded
+    this.lastCameraPosition = new THREE.Vector3(); // Track camera position for view-based visibility
     
     // Initialize the GLTF loader  
     this.loadModel(); // Load the model when the class is instantiated
@@ -89,6 +93,9 @@ export class ModelManager {
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
         
+        // Store model center for view-based visibility calculation
+        this.modelCenter.copy(center);
+        
         // Log bounding box for debugging
         console.log('Model size:', size);
         console.log('Model center:', center);
@@ -117,7 +124,8 @@ export class ModelManager {
         this.addModelHotspots();
         
         // Position camera to view the whole model
-        this.camera.position.set(1.52, 0.53, -4.54);
+        this.camera.position.set(1.52, 0.53, -3.4);
+        this.lastCameraPosition.copy(this.camera.position);
         
         // Rotate model to face up
         this.model.rotation.y = Math.PI / 1;
@@ -133,7 +141,7 @@ export class ModelManager {
     // Deepest Detox - Front view (Outside view)
     this.createHotspot(
       new THREE.Vector3(-0.4, 0, -0.65),
-      'top_area',
+      'front_area',
       'Glass Door',
       '8mm Tinted Tempered Glass – Privacy meets strength.',
       // Camera position for front view (closer to the front)
@@ -146,7 +154,7 @@ export class ModelManager {
     // Infrared Heating - Side view
     this.createHotspot(
       new THREE.Vector3(0, 1, -0.7),
-      'side_area',
+      'top_area',
       'Around Door Frame',
       '42mm Thick Nordic Spruce – Built to last, crafted to impress.',
       // Camera position for side angle view
@@ -159,7 +167,7 @@ export class ModelManager {
     // Easy Assembly - Bottom view from angle
     this.createHotspot(
       new THREE.Vector3(-0.7, 0.2, 0),
-      'bottom_area',
+      'right_area',
       'Side Panel ',
       'Canadian Cedar & Nordic Spruce – Sustainably sourced, naturally stunning',
       // Camera position for bottom view
@@ -172,7 +180,7 @@ export class ModelManager {
     // Chromotherapy - Interior top view
     this.createHotspot(
       new THREE.Vector3(0.73, 0.2, -0.4),
-      'bottom_area2',
+      'left_area',
       'Stainless Steel Bands',
       'Marine-Grade Stainless Steel – Rust-proof, weather-ready.',
       // Camera position for interior view showing lights
@@ -184,14 +192,26 @@ export class ModelManager {
   
     // Sound System - Side interior view
     this.createHotspot(
-      new THREE.Vector3(0, 0, 0.65),
-      'bottom_area3',
+      new THREE.Vector3(-0.5, 0, 0.65),
+      'back_area',
       'Vent Grates',
       'Smart Ventilation – Circulates fresh air for optimal comfort.',
       // Camera position for speaker view
       new THREE.Vector3(0.04, 0.44, 3.17),
       // Look at the speaker system
       new THREE.Vector3(0, 0.0, 0),
+      false // Not an inside view
+    );
+
+    this.createHotspot(
+      new THREE.Vector3(-0.16, 0.85, 0.65),
+      'back_area',
+      'Rear Vent',
+      'Ensures proper airflow for a safe, comfy session',
+      // Camera position for speaker view
+      new THREE.Vector3(-0.78, 1.01, 1.74),
+      // Look at the speaker system
+      new THREE.Vector3(0.33, 0.00, -0.72),
       false // Not an inside view
     );
 
@@ -239,6 +259,7 @@ export class ModelManager {
     // Create a group to hold the hotspot elements
     const hotspotGroup = new THREE.Group();
     hotspotGroup.position.copy(position);
+    hotspotGroup.renderOrder = 100; // Base render order for hotspot groups
     
     // Create black outline circle (slightly larger than the white circle)
     const outlineGeometry = new THREE.CircleGeometry(0.065, 32);
@@ -247,10 +268,12 @@ export class ModelManager {
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.8,
-      depthWrite: false
+      depthWrite: false,
+      depthTest: false
     });
     const outlineCircle = new THREE.Mesh(outlineGeometry, outlineMaterial);
     outlineCircle.position.z = -0.001; // Slightly behind the white circle
+    outlineCircle.renderOrder = 101; // Ensure outline renders above model
     
     // Create white circle (main hotspot)
     const circleGeometry = new THREE.CircleGeometry(0.06, 32);
@@ -259,13 +282,113 @@ export class ModelManager {
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0.9,
-      depthWrite: false
+      depthWrite: false,
+      depthTest: false
     });
     const circle = new THREE.Mesh(circleGeometry, circleMaterial);
+    circle.renderOrder = 102; // Ensure circle renders above outline
+    
+    // Store reference to the circle for hover detection
+    circle.userData.isHotspotCircle = true;
+    circle.userData.parentHotspot = hotspotGroup;
+    this.hotspotCircles.push(circle);
     
     // Add both circles to the group (outline first, then white circle)
     hotspotGroup.add(outlineCircle);
     hotspotGroup.add(circle);
+    
+    // Create label container for the title (initially invisible)
+    const labelWidth = 0.70;  // Width of the label
+    
+    // Create pill-shaped label container with white background and black outline
+    const labelGroup = new THREE.Group();
+    labelGroup.position.x = 0.25; // Position label to the right of the hotspot
+    labelGroup.position.z = 0.002; // Slightly in front
+    labelGroup.visible = false; // Hidden by default
+    labelGroup.renderOrder = 200; // Ensure label group renders above all hotspots
+    
+    // Create white background (pill shape using rounded rectangle)
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 256;
+    canvas.height = 64;
+    
+    // Draw rounded rectangle with white fill and black outline
+    const rectWidth = 240;
+    const rectHeight = 48;
+    const cornerRadius = 24; // Half of height for pill shape
+    
+    // Clear canvas
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw white background with black outline
+    context.beginPath();
+    context.moveTo(canvas.width/2 - rectWidth/2 + cornerRadius, canvas.height/2 - rectHeight/2);
+    context.lineTo(canvas.width/2 + rectWidth/2 - cornerRadius, canvas.height/2 - rectHeight/2);
+    context.arc(canvas.width/2 + rectWidth/2 - cornerRadius, canvas.height/2, cornerRadius, -Math.PI/2, Math.PI/2);
+    context.lineTo(canvas.width/2 - rectWidth/2 + cornerRadius, canvas.height/2 + rectHeight/2);
+    context.arc(canvas.width/2 - rectWidth/2 + cornerRadius, canvas.height/2, cornerRadius, Math.PI/2, -Math.PI/2);
+    context.closePath();
+    
+    // Fill with white
+    context.fillStyle = 'white';
+    context.fill();
+    
+    // Add black outline
+    context.strokeStyle = 'black';
+    context.lineWidth = 3;
+    context.stroke();
+    
+    // Create background texture
+    const backgroundTexture = new THREE.CanvasTexture(canvas);
+    backgroundTexture.needsUpdate = true;
+    
+    // Apply texture to a plane
+    const backgroundGeometry = new THREE.PlaneGeometry(labelWidth, labelWidth * (64/256));
+    const backgroundMaterial = new THREE.MeshBasicMaterial({
+      map: backgroundTexture,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const backgroundMesh = new THREE.Mesh(backgroundGeometry, backgroundMaterial);
+    backgroundMesh.renderOrder = 201; // Ensure background renders above everything
+    
+    // Create another canvas for text
+    const textCanvas = document.createElement('canvas');
+    const textContext = textCanvas.getContext('2d');
+    textCanvas.width = 340;
+    textCanvas.height = 90;
+    
+    // Add text
+    textContext.font = 'bold 26px Arial, sans-serif';
+    textContext.fillStyle = 'black';
+    textContext.textAlign = 'center';
+    textContext.textBaseline = 'middle';
+    textContext.fillText(title, textCanvas.width / 2, textCanvas.height / 2);
+    
+    // Create texture from canvas
+    const textTexture = new THREE.CanvasTexture(textCanvas);
+    textTexture.needsUpdate = true;
+    
+    // Apply texture to a plane
+    const textGeometry = new THREE.PlaneGeometry(labelWidth - 0.02, (labelWidth - 0.02) * (64/256));
+    const textMaterial = new THREE.MeshBasicMaterial({
+      map: textTexture,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+    textMesh.position.z = 0.001; // Slightly in front
+    textMesh.renderOrder = 202; // Ensure text renders on top of everything
+    
+    // Add background and text to label group
+    labelGroup.add(backgroundMesh);
+    labelGroup.add(textMesh);
+    
+    // Add label group to hotspot group
+    hotspotGroup.add(labelGroup);
     
     // Add metadata to the hotspot group with custom camera position if provided
     hotspotGroup.userData = {
@@ -277,11 +400,18 @@ export class ModelManager {
       cameraPosition: cameraPosition || new THREE.Vector3(position.x + 0.5, position.y, position.z + 0.5),
       // Use custom lookAt if provided, otherwise use the hotspot position
       lookAt: lookAt || position.clone(),
-      isInsideView: isInsideView // Flag to identify inside view hotspots
+      isInsideView: isInsideView, // Flag to identify inside view hotspots
+      labelMesh: labelGroup, // Reference to the label for animations
+      areaType: meshName, // Store the area type for view-based visibility
+      // Store materials for opacity changes
+      materials: {
+        outline: outlineMaterial,
+        circle: circleMaterial
+      }
     };
     
-    // Set initial scale
-    hotspotGroup.scale.set(1, 1, 1);
+    // Set fixed scale (no pulsing) - slightly larger size
+    hotspotGroup.scale.set(1.1, 1.1, 1.1);
     
     // Add to scene and hotspots array
     this.scene.add(hotspotGroup);
@@ -293,13 +423,107 @@ export class ModelManager {
     return hotspotGroup;
   }
   
+  // Method to determine which side of the model the camera is currently viewing
+  determineViewingSide() {
+    // Get direction vector from model center to camera
+    const directionToCamera = new THREE.Vector3().subVectors(this.camera.position, new THREE.Vector3(0, 0, 0));
+    
+    // Normalize the direction vector
+    directionToCamera.normalize();
+    
+    // Calculate dot products to determine which side is facing the camera
+    const dotFront = directionToCamera.dot(new THREE.Vector3(0, 0, -1));
+    const dotBack = directionToCamera.dot(new THREE.Vector3(0, 0, 1));
+    const dotLeft = directionToCamera.dot(new THREE.Vector3(1, 0, 0));
+    const dotRight = directionToCamera.dot(new THREE.Vector3(-1, 0, 0));
+    
+    // Get the largest dot product
+    const maxDot = Math.max(dotFront, dotBack, dotLeft, dotRight);
+    
+    // Determine the side based on the largest dot product
+    let side;
+    if (maxDot === dotFront) {
+      side = 'front';
+    } else if (maxDot === dotBack) {
+      side = 'back';
+    } else if (maxDot === dotLeft) {
+      side = 'left';
+    } else {
+      side = 'right';
+    }
+    
+    return side;
+  }
+  
+  // Update hotspot visibility based on the current viewing side
+  updateHotspotVisibilityBySide() {
+    // Get the current viewing side
+    const side = this.determineViewingSide();
+    
+    // Set visibility for each hotspot based on its area type and the current viewing side
+    this.hotspots.forEach(hotspot => {
+      const areaType = hotspot.userData.areaType;
+      const isInsideView = hotspot.userData.isInsideView;
+      let opacity = 1.0;
+      
+      if (side === 'front') {
+        // When viewing from front, show front, top, and inside hotspots
+        if (areaType !== 'front_area' && areaType !== 'top_area' && areaType !== 'inside_area') {
+          opacity = 0.3; // Make other hotspots semi-transparent
+        }
+      } else if (side === 'back') {
+        // When viewing from back, show back, top, and side hotspots
+        if (areaType !== 'back_area') {
+          opacity = 0.3;
+        }
+      } else if (side === 'left') {
+        // When viewing from left, show left, top, back hotspots
+        if (areaType !== 'left_area' ) {
+          opacity = 0.3;
+        }
+      } else if (side === 'right') {
+        // When viewing from right, show right, top, back hotspots
+        if (areaType !== 'right_area') {
+          opacity = 0.3;
+        }
+      }
+      
+      // Inside view hotspots are always visible
+      
+      if (isInsideView) {
+        // Only show inside hotspots when viewing from the front
+        if (side !== 'front') {
+          opacity = 0.3;
+        }
+      }
+      // Update the opacity of the hotspot's materials
+      hotspot.children.forEach(child => {
+        if (child.material) {
+          // Set opacity based on the material type
+          if (child.material.color.equals(new THREE.Color(0x000000))) {
+            // Black outline (lower base opacity)
+            child.material.opacity = opacity * 0.8;
+          } else if (child.material.color.equals(new THREE.Color(0xffffff))) {
+            // White circle
+            child.material.opacity = opacity * 0.9;
+          } else {
+            // Other materials
+            child.material.opacity = opacity;
+          }
+        }
+      });
+    });
+  }
+  
   // Method to handle hotspot clicks
   handleHotspotClick(hotspot, cameraAnimator, infoPanel) {
     if (this.animating) return;
     
     console.log("Handling hotspot click for:", hotspot);
     this.currentHotspot = hotspot;
-    
+    if (hotspot.userData && hotspot.userData.labelMesh) {
+      hotspot.userData.labelMesh.visible = false;
+    }
     // Store current camera position and controls target
     this.cameraPositionBeforeHotspot = this.camera.position.clone();
     this.targetPositionBeforeHotspot = this.controls.target.clone();
@@ -339,7 +563,9 @@ export class ModelManager {
         this.controls.target.copy(lookAtPosition);
         this.controls.enabled = false; // Keep controls disabled while info panel is open
         this.animating = false;
-        
+        if (hotspot.visible && hotspot.userData.labelMesh) {
+          hotspot.userData.labelMesh.visible = false;
+        }
         // Show info panel
         infoPanel.showInfoPanel(hotspot.userData.title, hotspot.userData.description);
       }
@@ -368,6 +594,9 @@ export class ModelManager {
         // Show all hotspots again
         this.showAllHotspots();
         
+        // Update hotspot visibility based on viewing side
+        this.updateHotspotVisibilityBySide();
+        
         if (callback) callback();
       }
     );
@@ -382,11 +611,20 @@ export class ModelManager {
     });
   }
 
-  // Add a method to show all hotspots
+  // Method to show all hotspots
   showAllHotspots() {
     this.hotspots.forEach(hotspot => {
       hotspot.visible = true;
+      
+      // Make sure labels are hidden
+      if (hotspot.userData && hotspot.userData.labelMesh) {
+        const labelGroup = hotspot.userData.labelMesh;
+        labelGroup.visible = false;
+      }
     });
+    
+    // Reset hovered hotspot
+    this.hoveredHotspot = null;
   }
   
   // Method to make front meshes transparent or opaque
@@ -396,28 +634,19 @@ export class ModelManager {
       mesh.visible = !transparent;
     });
   }
-  // Method to update hotspots appearance and check for hover
+  
+  // Update hotspots
   updateHotspots(mouse) {
     // Make all hotspots face the camera
     this.hotspots.forEach(hotspot => {
       hotspot.lookAt(this.camera.position);
-      
-      // Add a pulsing effect to hotspots
-      const time = Date.now() * 0.001;
-      const pulse = Math.sin(time * 2) * 0.1 + 1;
-      hotspot.scale.set(pulse, pulse, pulse);
-      
-      if (hotspot.userData && hotspot.userData.isInsideView) {
-        // Ensure the hotspot renders on top of other objects
-        hotspot.renderOrder = 999;
-        hotspot.children.forEach(child => {
-          if (child.material) {
-            child.material.depthTest = false;
-            child.renderOrder = 1000;
-          }
-        });
-      }
     });
+    
+    // Check if camera has moved significantly to update hotspot visibility
+    if (this.camera.position.distanceTo(this.lastCameraPosition) > 0.1) {
+      this.updateHotspotVisibilityBySide();
+      this.lastCameraPosition.copy(this.camera.position);
+    }
   }
   
   checkHotspotHover(mouse) {
@@ -427,31 +656,39 @@ export class ModelManager {
     // Update raycaster with current mouse position and camera
     this.raycaster.setFromCamera(mouse, this.camera);
     
-    // Check for intersections with hotspots
-    const intersects = this.raycaster.intersectObjects(this.hotspots, true); // true to check descendants
+    // Check for intersections with hotspot circles only
+    const intersects = this.raycaster.intersectObjects(this.hotspotCircles, false);
     
     // Update cursor and scale based on hover state
     if (intersects.length > 0) {
       document.body.style.cursor = 'pointer';
-      // Find the parent hotspot group
-      let hotspotGroup = intersects[0].object;
-      while (hotspotGroup.parent && !this.hotspots.includes(hotspotGroup)) {
-        hotspotGroup = hotspotGroup.parent;
-      }
       
-      // Highlight the entire hotspot group
-      hotspotGroup.scale.set(0.8, 0.8, 0.8);
+      // Get the parent hotspot group from the intersected circle
+      const hotspotGroup = intersects[0].object.userData.parentHotspot;
+      
+      // Update hovered hotspot and show its label
+      if (this.hoveredHotspot !== hotspotGroup) {
+        // Hide previous hotspot label if any
+        if (this.hoveredHotspot && this.hoveredHotspot.userData.labelMesh) {
+          this.hoveredHotspot.userData.labelMesh.visible = false;
+        }
+        
+        // Set new hovered hotspot and show its label
+        this.hoveredHotspot = hotspotGroup;
+        if (hotspotGroup.userData.labelMesh) {
+          hotspotGroup.userData.labelMesh.visible = true;
+        }
+      }
     } else {
       document.body.style.cursor = 'auto';
-      // Reset scale of all hotspots
-      this.hotspots.forEach(hotspot => {
-        if (hotspot !== this.currentHotspot) {
-          // Just maintain the pulse scale
-          const time = Date.now() * 0.001;
-          const pulse = Math.sin(time * 2) * 0.1 + 1;
-          hotspot.scale.set(pulse, pulse, pulse);
-        }
-      });
+      
+      // Hide label of previously hovered hotspot if any
+      if (this.hoveredHotspot && this.hoveredHotspot.userData.labelMesh) {
+        this.hoveredHotspot.userData.labelMesh.visible = false;
+      }
+      
+      // Reset hovered hotspot
+      this.hoveredHotspot = null;
     }
     
     return intersects.length > 0 ? intersects : null;
@@ -460,15 +697,11 @@ export class ModelManager {
   // Method to check if a click hits a hotspot
   checkHotspotClick(mouse) {
     this.raycaster.setFromCamera(mouse, this.camera);
-    const intersects = this.raycaster.intersectObjects(this.hotspots, true);
+    const intersects = this.raycaster.intersectObjects(this.hotspotCircles, false);
     
     if (intersects.length > 0) {
-      // Find the parent hotspot group
-      let hotspotGroup = intersects[0].object;
-      while (hotspotGroup.parent && !this.hotspots.includes(hotspotGroup)) {
-        hotspotGroup = hotspotGroup.parent;
-      }
-      return hotspotGroup;
+      // Get the parent hotspot group from the intersected circle
+      return intersects[0].object.userData.parentHotspot;
     }
     
     return null;
