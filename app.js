@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ModelManager } from './src/scripts/ModelManager.js';
 import { CameraAnimateClass } from './src/scripts/CameraAnimateClass.js';
 import { InfoPanelClass } from './src/scripts/InfoPanelClass.js';
+import { deltaTime } from 'three/tsl';
 
 export class SuanaConfig {
   constructor(scene, camera, renderer, modelPath = './public/models/Untitled.glb') {
@@ -14,7 +15,7 @@ export class SuanaConfig {
     this.hotspots = [];
     this.mouse = new THREE.Vector2();
     this.animating = false;
-    
+    this.clock = new THREE.Clock();
     console.log("SuanaConfig initialized with model path:", this.modelPath);
     
     // Setup the scene
@@ -31,7 +32,10 @@ export class SuanaConfig {
     
     // Set up mouse events
     this.setupMouseEvents();
-    
+    // this.setupMouseEvents();
+
+// Add this line:
+this.setupAnimationControls();
     // Start the animation loop
     this.animate();
   }
@@ -179,6 +183,117 @@ export class SuanaConfig {
       }
     });
   }
+  setupAnimationControls() {
+    // Create animation control panel
+    const controlPanel = document.createElement('div');
+    controlPanel.style.position = 'absolute';
+    controlPanel.style.bottom = '20px';
+    controlPanel.style.left = '20px';
+    controlPanel.style.zIndex = '100';
+    controlPanel.style.background = 'rgba(0,0,0,0.7)';
+    controlPanel.style.padding = '10px';
+    controlPanel.style.borderRadius = '5px';
+    document.body.appendChild(controlPanel);
+    
+    // Create door animation buttons
+    const openDoorButton = document.createElement('button');
+    openDoorButton.textContent = 'Open Door';
+    openDoorButton.style.marginRight = '5px';
+    openDoorButton.style.padding = '5px 10px';
+    openDoorButton.addEventListener('click', () => {
+      if (this.modelManager && this.modelManager.playDoorAnimation) {
+        this.modelManager.playDoorAnimation();
+      }
+    });
+    controlPanel.appendChild(openDoorButton);
+    
+    const closeDoorButton = document.createElement('button');
+    closeDoorButton.textContent = 'Close Door';
+    closeDoorButton.style.marginRight = '5px';
+    closeDoorButton.style.padding = '5px 10px';
+    closeDoorButton.addEventListener('click', () => {
+      if (this.modelManager && this.modelManager.resetDoorAnimation) {
+        this.modelManager.resetDoorAnimation();
+      }
+    });
+    controlPanel.appendChild(closeDoorButton);
+    
+    // Add spacing
+    const spacer = document.createElement('span');
+    spacer.style.margin = '0 10px';
+    spacer.textContent = '|';
+    controlPanel.appendChild(spacer);
+    
+    // Create light animation buttons
+    const turnLightOnButton = document.createElement('button');
+    turnLightOnButton.textContent = 'Light On';
+    turnLightOnButton.style.marginRight = '5px';
+    turnLightOnButton.style.padding = '5px 10px';
+    turnLightOnButton.addEventListener('click', () => {
+      if (this.modelManager && this.modelManager.playLightAnimation) {
+        this.modelManager.playLightAnimation();
+      }
+    });
+    controlPanel.appendChild(turnLightOnButton);
+    
+    const turnLightOffButton = document.createElement('button');
+    turnLightOffButton.textContent = 'Light Off';
+    turnLightOffButton.style.marginRight = '5px';
+    turnLightOffButton.style.padding = '5px 10px';
+    turnLightOffButton.addEventListener('click', () => {
+      if (this.modelManager && this.modelManager.resetLightAnimation) {
+        this.modelManager.resetLightAnimation();
+      }
+    });
+    controlPanel.appendChild(turnLightOffButton);
+    
+    // Add a demo button that plays all animations
+    const playAllButton = document.createElement('button');
+    playAllButton.textContent = 'Play All';
+    playAllButton.style.marginLeft = '10px';
+    playAllButton.style.padding = '5px 10px';
+    playAllButton.style.backgroundColor = '#4CAF50';
+    playAllButton.style.color = 'white';
+    playAllButton.addEventListener('click', () => {
+      if (this.modelManager && this.modelManager.playAllAnimations) {
+        this.modelManager.playAllAnimations();
+      }
+    });
+    controlPanel.appendChild(playAllButton);
+    
+    // Add keyboard shortcuts
+    window.addEventListener('keydown', (event) => {
+      if (this.modelManager) {
+        switch(event.key) {
+          case 'd': // Door open
+            if (this.modelManager.playDoorAnimation) {
+              this.modelManager.playDoorAnimation();
+            }
+            break;
+          case 'D': // Door close
+            if (this.modelManager.resetDoorAnimation) {
+              this.modelManager.resetDoorAnimation();
+            }
+            break;
+          case 'l': // Light on
+            if (this.modelManager.playLightAnimation) {
+              this.modelManager.playLightAnimation();
+            }
+            break;
+          case 'L': // Light off
+            if (this.modelManager.resetLightAnimation) {
+              this.modelManager.resetLightAnimation();
+            }
+            break;
+          case 'a': // Play all
+            if (this.modelManager.playAllAnimations) {
+              this.modelManager.playAllAnimations();
+            }
+            break;
+        }
+      }
+    });
+  }
   
   animate() {
     requestAnimationFrame(this.animate.bind(this));
@@ -194,6 +309,16 @@ export class SuanaConfig {
       
       // Check for hotspot hover
       this.modelManager.checkHotspotHover(this.mouse);
+    //   if(this.modelManager.mixer){
+    //   // this.modelManager.update(deltaTime)
+    // }
+    
+    }
+    if(this.modelManager.mixer){
+
+      const delta = this.clock.getDelta();
+      this.modelManager.update(delta);
+    
     }
     
     // Render the scene

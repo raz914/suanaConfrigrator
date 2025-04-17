@@ -43,13 +43,111 @@ export class ModelManager {
     };
     
     loader.load(
-      './public/models/Sauna Modeling Final.glb',
+      './public/models/Epoch 2 Outdoor Sauna.glb',
       (gltf) => {
         console.log('GLTF data loaded:', gltf);
         this.model = gltf.scene;
         
         // Log model details for debugging
         console.log('Model loaded:', this.model);
+        
+        // Set up animation mixer
+        this.mixer = new THREE.AnimationMixer(this.model);
+        
+        // Log all animations found in the model
+    // Add this to your ModelManager class where you load animations
+
+// In your loadModel method, replace the animation section with this:
+if (gltf.animations && gltf.animations.length > 0) {
+  console.log('Animations found:', gltf.animations.length);
+  
+  // Initialize animation storage
+  this.animations = {};
+  
+  gltf.animations.forEach((clip, index) => {
+    console.log(`Animation ${index}: ${clip.name}`, clip);
+    
+    // Store both animations by their exact names
+    if (clip.name === "ACT Sauna Front Glass Door") {
+      console.log("Found exact door animation by name");
+      this.animations.door = this.mixer.clipAction(clip);
+      this.animations.door.setLoop(THREE.LoopOnce);
+      this.animations.door.clampWhenFinished = true;
+      this.animations.door.timeScale = 1;
+    }
+    
+    if (clip.name === "Light BottomAction") {
+      console.log("Found light animation by name");
+      this.animations.light = this.mixer.clipAction(clip);
+      this.animations.light.setLoop(THREE.LoopOnce);
+      this.animations.light.clampWhenFinished = true;
+      this.animations.light.timeScale = 1;
+    }
+  });
+  
+  // Add methods to play animations
+  
+  // Door animation methods
+  this.playDoorAnimation = () => {
+    if (this.animations && this.animations.door) {
+      console.log('Playing door animation');
+      this.animations.door.reset();
+      this.animations.door.timeScale = 4.5; // Forward playback
+      this.animations.door.play();
+    } else {
+      console.warn('Door animation not available');
+    }
+  };
+  
+  this.resetDoorAnimation = () => {
+    if (this.animations && this.animations.door) {
+      console.log('Closing door animation');
+      this.animations.door.reset();
+      this.animations.door.timeScale = -1; // Reverse playback
+      this.animations.door.play();
+    } else {
+      console.warn('Door animation not available');
+    }
+  };
+  
+  // Light animation methods
+  this.playLightAnimation = () => {
+    if (this.animations && this.animations.light) {
+      console.log('Playing light animation');
+      this.animations.light.reset();
+      this.animations.light.timeScale = 1; // Forward playback
+      this.animations.light.play();
+    } else {
+      console.warn('Light animation not available');
+    }
+  };
+  
+  this.resetLightAnimation = () => {
+    if (this.animations && this.animations.light) {
+      console.log('Resetting light animation');
+      this.animations.light.reset();
+      this.animations.light.timeScale = -1; // Reverse playback
+      this.animations.light.play();
+    } else {
+      console.warn('Light animation not available');
+    }
+  };
+  
+  // Method to play all animations sequentially
+  // this.playAllAnimations = () => {
+  //   this.playDoorAnimation();
+    
+  //   // Play light animation after door animation
+  //   const doorDuration = this.animations.door.getClip().duration * 1000; // Convert to ms
+  //   setTimeout(() => {
+  //     this.playLightAnimation();
+  //   }, doorDuration);
+  // };
+
+  this.playDoorAnimation();
+} else {
+          console.log('No animations found in the model');
+        }
         
         // Keep track of the front meshes we need to make transparent
         const frontMeshNames = [
@@ -72,7 +170,12 @@ export class ModelManager {
         
         // Traverse all objects in the model
         this.model.traverse((child) => {
-          console.log('Scene contains:', child.type, child.name, child.animations);
+          console.log('Scene contains:', child.type, child.name, child.userData);
+          
+          // Debug animations at the object level
+          if (child.animations && child.animations.length > 0) {
+            console.log('Object has animations:', child.name, child.animations);
+          }
           
           // Enable shadows
           if (child.isMesh) {
@@ -136,7 +239,15 @@ export class ModelManager {
       onError
     );
   }
-
+  update(deltaTime) {
+    // Update the animation mixer in your render/animation loop
+    if (this.mixer) {
+      this.mixer.update(deltaTime);
+    }
+    
+    // Your existing update code...
+  }
+  
   addModelHotspots() {
     // Deepest Detox - Front view (Outside view)
     this.createHotspot(
