@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { ModelManager } from './src/scripts/ModelManager.js';
+// import { HotspotManager } from './src/scripts/HotspotManager.js';
+import { CameraAnimateClass } from './src/scripts/CameraAnimateClass.js';
+import { infoPanelClass } from './src/scripts/InfoPanelClass.js';
 
 export class SuanaConfig {
   constructor(scene, camera, renderer, modelPath = './public/models/Untitled.glb') {
@@ -18,7 +23,8 @@ export class SuanaConfig {
     this.cameraPositionBeforeHotspot = null;
     this.targetPositionBeforeHotspot = null;
     this.animating = false;
-
+    this.setupCameraPositionTester();
+    
     console.log("SuanaConfig initialized with model path:", this.modelPath);
     
     // Setup the scene
@@ -29,7 +35,7 @@ export class SuanaConfig {
     
     // Call handleResize to set up the event listener
     this.handleResize();
-    this.setupKeyboardControls();
+    // this.setupKeyboardControls();
     
     // Set up mouse events for hotspots
     this.setupMouseEvents();
@@ -38,79 +44,121 @@ export class SuanaConfig {
     this.createInfoPanel();
     
     // Load the 3D model
-    this.loadModel();
     
     // Create a simple test hotspot
     // this.createTestHotspot();
+    this.modelManager = new ModelManager(this.scene, this.camera, this.controls,this.hotspots,modelPath = './public/models/Untitled.glb');
+    this.cameraAnimateClass = new CameraAnimateClass(this.scene, this.camera, this.renderer,this.controls);
+    
+    // this.modelManager.loadModel();
     
     // Start the animation loop
     this.animate();
   }
 
-  createTestHotspot() {
-    // Add a simple test hotspot at a visible position
-    const hotspotPosition = new THREE.Vector3(0, 0.5, 0);
-    const testHotspot = this.createHotspot(
-      hotspotPosition,
-      'test_hotspot',
-      'Test Hotspot',
-      'This is a test hotspot to verify functionality.'
-    );
-    console.log("Test hotspot created:", testHotspot);
-  }
-
-  setupKeyboardControls() {
-    // Add event listener for keydown events
-    window.addEventListener('keydown', (event) => {
-      // Check if the pressed key is 'c' (either lowercase or uppercase)
-      if (event.key === 'c' || event.key === 'C') {
-        // Get the current camera position
-        const position = this.camera.position.clone();
-        
-        // Format the position to have only 2 decimal places
-        const x = position.x.toFixed(2);
-        const y = position.y.toFixed(2);
-        const z = position.z.toFixed(2);
-        
-        // Log the camera position to the console
-        console.log(`Camera Position: x: ${x}, y: ${y}, z: ${z}`, " zoom", this.camera.zoom);  
-        
-        // Optionally, create a visual notification on screen
-        this.showCameraPositionOverlay(x, y, z);
+  setupCameraPositionTester() {
+    // Create a simple UI for testing camera positions
+    const panel = document.createElement('div');
+    panel.style.position = 'fixed';
+    panel.style.top = '10px';
+    panel.style.left = '10px';
+    panel.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    panel.style.color = 'white';
+    panel.style.padding = '10px';
+    panel.style.borderRadius = '5px';
+    panel.style.fontFamily = 'monospace';
+    panel.style.zIndex = '1000';
+    panel.style.display = 'none'; // Hidden by default
+    panel.id = 'camera-test-panel';
+    
+    // Toggle button for the panel
+    const toggleButton = document.createElement('button');
+    toggleButton.textContent = 'Camera Tester';
+    toggleButton.style.position = 'fixed';
+    toggleButton.style.top = '10px';
+    toggleButton.style.left = '10px';
+    toggleButton.style.zIndex = '1001';
+    toggleButton.style.padding = '5px 10px';
+    
+    toggleButton.addEventListener('click', () => {
+      if (panel.style.display === 'none') {
+        panel.style.display = 'block';
+        // Update position display when panel is shown
+        this.updateCameraPositionDisplay();
+      } else {
+        panel.style.display = 'none';
       }
     });
+    
+    // Create position display
+    const positionDisplay = document.createElement('div');
+    positionDisplay.id = 'position-display';
+    panel.appendChild(positionDisplay);
+    
+    // Create target display
+    const targetDisplay = document.createElement('div');
+    targetDisplay.id = 'target-display';
+    panel.appendChild(targetDisplay);
+    
+    // Create buttons for saving positions
+    const copyButton = document.createElement('button');
+    copyButton.textContent = 'Copy Position & Target';
+    copyButton.style.display = 'block';
+    copyButton.style.margin = '10px 0';
+    copyButton.style.padding = '5px';
+    
+    copyButton.addEventListener('click', () => {
+      const cameraPos = this.camera.position;
+      const targetPos = this.controls.target;
+      
+      // Format positions as Three.js code
+      const positionCode = `new THREE.Vector3(${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`;
+      const targetCode = `new THREE.Vector3(${targetPos.x.toFixed(2)}, ${targetPos.y.toFixed(2)}, ${targetPos.z.toFixed(2)})`;
+      
+      // Copy to clipboard
+      const textToCopy = `// Camera position:\n${positionCode},\n// Look at target:\n${targetCode}`;
+      navigator.clipboard.writeText(textToCopy)
+        .then(() => {
+          alert('Camera position and target copied to clipboard!');
+        })
+        .catch(err => {
+          console.error('Could not copy text: ', err);
+          // Fallback
+          const textArea = document.createElement('textarea');
+          textArea.value = textToCopy;
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          alert('Camera position and target copied to clipboard!');
+        });
+    });
+    
+    panel.appendChild(copyButton);
+    document.body.appendChild(panel);
+    document.body.appendChild(toggleButton);
+    
+    // Set up interval to update position display
+    setInterval(() => {
+      if (panel.style.display !== 'none') {
+        this.updateCameraPositionDisplay();
+      }
+    }, 100);
   }
   
-  showCameraPositionOverlay(x, y, z) {
-    // Create or update an overlay div to show camera position
-    let overlay = document.getElementById('camera-position-overlay');
+  updateCameraPositionDisplay() {
+    const positionDisplay = document.getElementById('position-display');
+    const targetDisplay = document.getElementById('target-display');
     
-    if (!overlay) {
-      // Create the overlay if it doesn't exist
-      overlay = document.createElement('div');
-      overlay.id = 'camera-position-overlay';
-      overlay.style.position = 'fixed';
-      overlay.style.bottom = '20px';
-      overlay.style.right = '20px';
-      overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-      overlay.style.color = 'white';
-      overlay.style.padding = '10px';
-      overlay.style.borderRadius = '5px';
-      overlay.style.fontFamily = 'monospace';
-      overlay.style.zIndex = '1000';
-      overlay.style.transition = 'opacity 1s';
-      document.body.appendChild(overlay);
-    }
+    if (!positionDisplay || !targetDisplay) return;
     
-    // Update the content and show the overlay
-    overlay.textContent = `Camera: (${x}, ${y}, ${z})`;
-    overlay.style.opacity = '1';
+    const cameraPos = this.camera.position;
+    const targetPos = this.controls.target;
     
-    // Hide the overlay after 3 seconds
-    setTimeout(() => {
-      overlay.style.opacity = '0';
-    }, 3000);
+    positionDisplay.textContent = `Camera: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)})`;
+    targetDisplay.textContent = `Target: (${targetPos.x.toFixed(2)}, ${targetPos.y.toFixed(2)}, ${targetPos.z.toFixed(2)})`;
   }
+
 
   createScene() {
     const scene = new THREE.Scene();
@@ -176,69 +224,7 @@ export class SuanaConfig {
     this.scene.add(pointLight);
   }
 
-  createHotspot(position, meshName, title, description) {
-    console.log("Creating hotspot at position:", position);
-    
-    // Create a group to hold the hotspot elements
-    const hotspotGroup = new THREE.Group();
-    hotspotGroup.position.copy(position);
-    
-    // Outer white circle
-    const outerGeometry = new THREE.CircleGeometry(0.05, 32);
-    const outerMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.9
-    });
-    const outerCircle = new THREE.Mesh(outerGeometry, outerMaterial);
-    
-    // Middle grey circle
-    const middleGeometry = new THREE.CircleGeometry(0.045, 32);
-    const middleMaterial = new THREE.MeshBasicMaterial({
-      color: 0x888888,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.9
-    });
-    const middleCircle = new THREE.Mesh(middleGeometry, middleMaterial);
-    middleCircle.position.z = 0.001;
-    
-    // Inner white circle
-    const innerGeometry = new THREE.CircleGeometry(0.015, 32);
-    const innerMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 1.0
-    });
-    const innerCircle = new THREE.Mesh(innerGeometry, innerMaterial);
-    innerCircle.position.z = 0.002;
-    
-    // Add all circles to the group
-    hotspotGroup.add(outerCircle);
-    hotspotGroup.add(middleCircle);
-    hotspotGroup.add(innerCircle);
-    
-    // Add metadata to the hotspot group
-    hotspotGroup.userData = {
-      type: 'hotspot',
-      meshName: meshName,
-      title: title,
-      description: description,
-      cameraPosition: new THREE.Vector3(position.x + 0.5, position.y, position.z + 0.5),
-      lookAt: position.clone()
-    };
-    hotspotGroup.scale.set(0.8, 0.8, 0.8); // Initial scale for the hotspot
-    // Add to scene and hotspots array
-    this.scene.add(hotspotGroup);
-    this.hotspots.push(hotspotGroup);
-    
-    console.log("Hotspot added to scene:", hotspotGroup);
-    console.log("Total hotspots:", this.hotspots.length);
-    
-    return hotspotGroup;
-  }
+  
   
   setupMouseEvents() {
     // Add mouse move listener for hovering over hotspots
@@ -269,45 +255,75 @@ export class SuanaConfig {
     });
   }
   
-  handleHotspotClick(hotspot) {
-    if (this.animating) return;
-    
-    console.log("Handling hotspot click for:", hotspot);
-    this.currentHotspot = hotspot;
-    
-    // Store current camera position and controls target
-    this.cameraPositionBeforeHotspot = this.camera.position.clone();
-    this.targetPositionBeforeHotspot = this.controls.target.clone();
-    
-    // Disable controls during animation
-    this.controls.enabled = false;
-    this.animating = true;
-    
-    // Get target camera position from hotspot
-    const targetPosition = hotspot.userData.cameraPosition;
-    const lookAtPosition = hotspot.userData.lookAt;
-    
-    console.log("Moving camera to:", targetPosition, "looking at:", lookAtPosition);
-    
-    // Animate camera to new position
-    this.animateCamera(
-      this.camera.position.clone(),
-      targetPosition,
-      this.controls.target.clone(),
-      lookAtPosition,
-      1.0, // Animation duration in seconds
-      () => {
-        // Animation complete
-        this.controls.target.copy(lookAtPosition);
-        this.controls.enabled = true;
-        this.animating = false;
-        
-        // Show info panel
-        this.showInfoPanel(hotspot.userData.title, hotspot.userData.description);
-      }
-    );
-  }
+// Update the handleHotspotClick method to hide other hotspots
+handleHotspotClick(hotspot) {
+  if (this.animating) return;
   
+  console.log("Handling hotspot click for:", hotspot);
+  this.currentHotspot = hotspot;
+  
+  // Store current camera position and controls target
+  this.cameraPositionBeforeHotspot = this.camera.position.clone();
+  this.targetPositionBeforeHotspot = this.controls.target.clone();
+  if (hotspot.userData.isInsideView) {
+    // Make front meshes transparent
+    setTimeout(() => { 
+
+
+      // this.setFrontMeshesTransparency(true);
+      this.modelManager.setFrontMeshesTransparency(true);
+
+              }, 700); 
+  } else {
+    // Reset transparency for other hotspots
+    this.modelManager.setFrontMeshesTransparency(false);
+  }
+  // Disable controls during animation
+  this.controls.enabled = false;
+  this.animating = true;
+  
+  // Hide all other hotspots
+  this.hideHotspots(hotspot);
+  
+  // Get target camera position from hotspot
+  const targetPosition = hotspot.userData.cameraPosition;
+  const lookAtPosition = hotspot.userData.lookAt;
+  
+  console.log("Moving camera to:", targetPosition, "looking at:", lookAtPosition);
+  
+  // Animate camera to new position
+  this.animateCamera(
+    this.camera.position.clone(),
+    targetPosition,
+    this.controls.target.clone(),
+    lookAtPosition,
+    1.0, // Animation duration in seconds
+    () => {
+      // Animation complete
+      this.controls.target.copy(lookAtPosition);
+      this.controls.enabled = false; // Keep controls disabled while info panel is open
+      this.animating = false;
+      
+      // Show info panel
+      this.showInfoPanel(hotspot.userData.title, hotspot.userData.description);
+    }
+  );
+}
+hideHotspots(exceptHotspot = null) {
+  this.hotspots.forEach(hotspot => {
+    if (hotspot !== exceptHotspot) {
+      // Make the hotspot invisible
+      hotspot.visible = false;
+    }
+  });
+}
+
+// Add a method to show all hotspots
+showAllHotspots() {
+  this.hotspots.forEach(hotspot => {
+    hotspot.visible = true;
+  });
+}
   animateCamera(startPos, endPos, startTarget, endTarget, duration, callback) {
     const startTime = Date.now();
     const endTime = startTime + duration * 1000;
@@ -347,14 +363,14 @@ export class SuanaConfig {
   easeInOutCubic(t) {
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
-  
+
   createInfoPanel() {
     // Create the info panel container
     const panel = document.createElement('div');
     panel.style.position = 'fixed';
     panel.style.top = '0';
     panel.style.right = '-400px'; // Start off-screen
-    panel.style.width = '400px';
+    panel.style.width = '250px';
     panel.style.height = '100%';
     panel.style.backgroundColor = 'white';
     panel.style.boxShadow = '-2px 0 10px rgba(0, 0, 0, 0.2)';
@@ -423,7 +439,7 @@ export class SuanaConfig {
   
   hideInfoPanel() {
     if (!this.infoPanel || !this.currentHotspot) return;
-    
+    this.modelManager.setFrontMeshesTransparency(false);
     // Hide panel
     this.infoPanel.style.right = '-400px';
     
@@ -439,152 +455,77 @@ export class SuanaConfig {
         this.targetPositionBeforeHotspot,
         1.0,
         () => {
+          // Re-enable controls and show all hotspots
           this.controls.enabled = true;
           this.animating = false;
           this.currentHotspot = null;
+          
+          // Show all hotspots again
+          this.showAllHotspots();
         }
       );
-    }
-  }
-  
-  loadModel() {
-    console.log("Attempting to load model from:", this.modelPath);
-    const loader = new GLTFLoader();
-    
-    // Add a progress callback
-    const onProgress = (xhr) => {
-      if (xhr.lengthComputable) {
-        const percentComplete = (xhr.loaded / xhr.total) * 100;
-        console.log(`Loading model: ${percentComplete.toFixed(2)}% complete`);
-      } else {
-        console.log(`Loading model: ${xhr.loaded} bytes loaded`);
-      }
-    };
-    
-    // Add an error callback
-    const onError = (error) => {
-      console.error('Error loading model:', error);
-    };
-    
-    loader.load(
-      this.modelPath,
-      (gltf) => {
-        console.log('GLTF data loaded:', gltf);
-        this.model = gltf.scene;
-        
-        // Log model details for debugging
-        console.log('Model loaded:', this.model);
-        
-        // Find specific meshes for hotspots
-        let innerStructureMesh = null;
-        let doorFrameMesh = null;
-        
-        // Log all objects in the scene and ensure materials
-        this.model.traverse((child) => {
-          console.log('Scene contains:', child.type, child.name);
-          
-          // Enable shadows
-          child.castShadow = true;
-          child.receiveShadow = true;
-          
-          // Find meshes of interest
-          if (child.name === 'inner_structure' || child.name.includes('inner')) {
-            console.log("Found inner structure mesh:", child.name);
-            innerStructureMesh = child;
-          } else if (child.name === 'door_frame' || child.name.includes('door')) {
-            console.log("Found door frame mesh:", child.name);
-            doorFrameMesh = child;
-          }
-        });
-        
-        // Center the model
-        const box = new THREE.Box3().setFromObject(this.model);
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        
-        // Log bounding box for debugging
-        console.log('Model size:', size);
-        console.log('Model center:', center);
-        
-        // Position model at center
-        this.model.position.x = -center.x;
-        this.model.position.y = -center.y;
-        this.model.position.z = -center.z;
-        
-        // Scale if needed
-        const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim > 10) {
-          const scale = 5 / maxDim;
-          this.model.scale.set(scale, scale, scale);
-          console.log('Model scaled down to:', scale);
-        } else if (maxDim < 0.5) {
-          const scale = 2 / maxDim;
-          this.model.scale.set(scale, scale, scale);
-          console.log('Model scaled up to:', scale);
-        }
-        
-        // Add the model to the scene
-        this.scene.add(this.model);
-        
-        // Add hotspots after model is loaded and positioned
-        // Add fixed hotspots based on the model's structure
-        this.addModelHotspots();
-        
-        // Position camera to view the whole model
-        // Set a fixed camera position first, not based on model size
-        this.camera.position.set(1.52, 0.53, 0.54);
-        
-        // Rotate model to face up
-        this.model.rotation.y = Math.PI / 1;
-        
-        console.log('Model added to scene');
-      },
-      onProgress,
-      onError
-    );
-  }
+    }}
+
   
   addModelHotspots() {
-    // Add fixed hotspots at specific positions relative to model
-    // Front top
+    // Deepest Detox - Front view
     this.createHotspot(
-
-
       new THREE.Vector3(0.05, 0, -0.1),
       'top_area',
       'Deepest Detox',
-      'Experience the deepest detox with our advanced sauna technology.'
+      'Experience the deepest detox with our advanced sauna technology.',
+      // Camera position for front view (closer to the front)
+      new THREE.Vector3(0.94, 0.14, 0.32),
+      // Look at the hotspot from the front
+      new THREE.Vector3(0.0, 0, 0)
     );
     
-    // Middle area
+    // Infrared Heating - Side view
     this.createHotspot(
       new THREE.Vector3(0.3, 0.4, 0.2),
       'side_area',
       'Infrared Heating',
-      'Full-spectrum infrared heating technology for maximum therapeutic benefits.'
+      'Full-spectrum infrared heating technology for maximum therapeutic benefits.',
+      // Camera position for side angle view
+      new THREE.Vector3(0.8, 0.5, 0.4),
+      // Look at the heating element
+      new THREE.Vector3(0.3, 0.4, 0.2)
     );
     
-    // Bottom area
+    // Easy Assembly - Bottom view from angle
     this.createHotspot(
       new THREE.Vector3(0.32, -0.2, -0.3),
       'bottom_area',
       'Easy Assembly',
-      'Quick and easy assembly with no tools required.'
+      'Quick and easy assembly with no tools required.',
+      // Camera position for bottom view
+      new THREE.Vector3(1.35, -0.24, -0.68),
+      // Look at the assembly area
+      new THREE.Vector3(0, 0, 0)
     );
-
-
+  
+    // Chromotherapy - Interior top view
     this.createHotspot(
       new THREE.Vector3(0.1, 0.25, -0.36),
       'bottom_area2',
       'Chromotherapy Included',
-      'Built-in chromotherapy lighting provides additional therapeutic benefits by harnessing colors from the suns visible light spectrum.'
+      'Built-in chromotherapy lighting provides additional therapeutic benefits by harnessing colors from the suns visible light spectrum.',
+      // Camera position for interior view showing lights
+      new THREE.Vector3(0.91, 0.42, -0.85),
+      // Look at the light system
+      new THREE.Vector3(0.00, 0, 0)
     );
-
+  
+    // Sound System - Side interior view
     this.createHotspot(
       new THREE.Vector3(-0.2, 0.34, -0.1),
       'bottom_area3',
       'Premium Sound System',
-      'Enjoy your favorite music with our premium sound system.'
+      'Enjoy your favorite music with our premium sound system.',
+      // Camera position for speaker view
+      new THREE.Vector3(1.11, 0.40, 0.42),
+      // Look at the speaker system
+      new THREE.Vector3(0, 0.0, 0)
     );
   }
   
@@ -622,7 +563,6 @@ export class SuanaConfig {
     
     // Check for hotspot hover
     this.checkHotspotHover();
-    
     // Render the scene
     this.renderer.render(this.scene, this.camera);
   }
@@ -636,7 +576,18 @@ export class SuanaConfig {
       const time = Date.now() * 0.001;
       const pulse = Math.sin(time * 2) * 0.1 + 1;
       hotspot.scale.set(pulse, pulse, pulse);
+      if (hotspot.userData && hotspot.userData.isInsideView) {
+        // Ensure the hotspot renders on top of other objects
+        hotspot.renderOrder = 999;
+        hotspot.children.forEach(child => {
+          if (child.material) {
+            child.material.depthTest = false;
+            child.renderOrder = 1000;
+          }
+        });
+      }
     });
+    
   }
   
   checkHotspotHover() {
