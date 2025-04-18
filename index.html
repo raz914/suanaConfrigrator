@@ -9,6 +9,7 @@
     body {
       margin: 0;
       overflow: hidden;
+      font-family: Arial, sans-serif;
     }
     canvas {
       display: block;
@@ -26,6 +27,7 @@
       /* A semi-transparent background color enhances the blur effect */
       background-color: rgba(255, 255, 255, 0.3);
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       z-index: 100; /* Ensure it stays on top of your Three.js canvas */
@@ -40,6 +42,7 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 5px;
+      margin-bottom: 20px;
     }
     .loader span {
       width: 100%;
@@ -54,6 +57,21 @@
     .loader span:nth-child(5) { animation-delay: 500ms; }
     .loader span:nth-child(6) { animation-delay: 600ms; }
 
+    /* Percentage indicator styles */
+    .loader-percentage {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+      margin-top: 10px;
+    }
+
+    /* Loading text styles */
+    .loader-text {
+      font-size: 18px;
+      color: #555;
+      margin-top: 5px;
+    }
+
     @keyframes keyframes-blink {
       0% {
         opacity: 0.3;
@@ -67,8 +85,8 @@
   </style>
 </head>
 <body>
-  <!-- Loader Overlay with the Spinner -->
-  <!-- <div class="loader-overlay">
+  <!-- Loader Overlay with the Spinner and Percentage -->
+  <div class="loader-overlay" id="loader-overlay">
     <div class="loader">
       <span></span>
       <span></span>
@@ -77,7 +95,9 @@
       <span></span>
       <span></span>
     </div>
-  </div> -->
+    <!-- <div class="loader-percentage" id="loader-percentage">0%</div> -->
+    <div class="loader-text">Loading Sauna Model...</div>
+  </div>
 
   <!-- Your Three.js application -->
   <script type="module" src="app.js"></script>

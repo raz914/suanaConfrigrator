@@ -86,9 +86,9 @@ export class SuanaConfig {
     const scene = new THREE.Scene();
     
     // Create a gradient background using a custom shader
-    const gradientTexture = this.createGradientTexture();
-    scene.background = gradientTexture;
-    // scene.background = new THREE.Color(0x333333);
+    // const gradientTexture = this.createGradientTexture();
+    // scene.background = gradientTexture;
+    scene.background = new THREE.Color(0x333333);
 
     
     return scene;

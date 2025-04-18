@@ -102,14 +102,14 @@ export class ModelManager {
     };
     
     loader.load(
-      './public/models/Epoch 2 Outdoor Sauna.glb',
+      './public/models/Epoch 2 Outdoor Sauna 2.glb',
       (gltf) => {
         console.log('GLTF data loaded:', gltf);
         this.model = gltf.scene;
         
         // Log model details for debugging
         console.log('Model loaded:', this.model);
-        
+        this.hideLoader();
         // Set up animation mixer
         this.mixer = new THREE.AnimationMixer(this.model);
         
@@ -462,7 +462,44 @@ export class ModelManager {
     // Make inside hotspots smaller
     this.resizeInsideHotspots(0.6);
   }
+  showLoader() {
+    // First check if the loader exists in the DOM
+    let loaderOverlay = document.querySelector('.loader-overlay');
+    
+    // If loader doesn't exist, create it
+    if (!loaderOverlay) {
+      loaderOverlay = document.createElement('div');
+      loaderOverlay.className = 'loader-overlay';
+      
+      const loader = document.createElement('div');
+      loader.className = 'loader';
+      
+      // Create six spans as in your HTML
+      for (let i = 0; i < 6; i++) {
+        const span = document.createElement('span');
+        loader.appendChild(span);
+      }
+      
+      loaderOverlay.appendChild(loader);
+      document.body.appendChild(loaderOverlay);
+    } else {
+      // If it exists but was hidden, show it
+      loaderOverlay.style.display = 'flex';
+    }
+  }
   
+  hideLoader() {
+    const loaderOverlay = document.querySelector('.loader-overlay');
+    if (loaderOverlay) {
+      // Fade out effect
+      loaderOverlay.style.opacity = '0';
+      
+      // Remove from DOM after transition
+      setTimeout(() => {
+        loaderOverlay.style.display = 'none';
+      }, 500);
+    }
+  }
   toggleInsideHotspots(show) {
     this.insideHotspots.forEach(hotspot => {
       hotspot.visible = show;
