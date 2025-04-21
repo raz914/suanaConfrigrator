@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { workerModelLoader } from './WorkerModelLoader.js';
 
 export class ModelManager {
-  constructor(scene, camera, controls, hotspots, modelPath = './public/models/Sauna Modeling Final.glb') {
+  constructor(scene, camera, controls, hotspots, modelPath = './public/models/model.glb') {
     this.scene = scene; // Reference to the Three.js scene
     this.camera = camera; // Reference to the Three.js camera
     this.controls = controls; // Reference to the Three.js controls
@@ -81,221 +82,305 @@ export class ModelManager {
       this.insideCameraTarget = null;
     }, 500); // Slight delay to let door animation start
   }
+// Add this to your ModelManager.js file in the loadModel method
 
-  loadModel() {
-    console.log("Attempting to load model from:", this.modelPath);
-    const loader = new GLTFLoader();
-    
-    // Add a progress callback
-    const onProgress = (xhr) => {
-      if (xhr.lengthComputable) {
-        const percentComplete = (xhr.loaded / xhr.total) * 100;
-        console.log(`Loading model: ${percentComplete.toFixed(2)}% complete`);
-      } else {
-        console.log(`Loading model: ${xhr.loaded} bytes loaded`);
-      }
-    };
-    
-    // Add an error callback
-    const onError = (error) => {
-      console.error('Error loading model:', error);
-    };
-    
-    loader.load(
-      './public/models/Epoch 2 Outdoor Sauna 2.glb',
-      (gltf) => {
-        console.log('GLTF data loaded:', gltf);
-        this.model = gltf.scene;
-        
-        // Log model details for debugging
-        console.log('Model loaded:', this.model);
-        this.hideLoader();
-        // Set up animation mixer
-        this.mixer = new THREE.AnimationMixer(this.model);
-        
-        // Log all animations found in the model
-        if (gltf.animations && gltf.animations.length > 0) {
-          console.log('Animations found:', gltf.animations.length);
-          
-          // Initialize animation storage
-          this.animations = {};
-          
-          gltf.animations.forEach((clip, index) => {
-            console.log(`Animation ${index}: ${clip.name}`, clip);
-            
-            // Store both animations by their exact names
-            if (clip.name === "ACT Sauna Front Glass Door") {
-              console.log("Found exact door animation by name");
-              this.animations.door = this.mixer.clipAction(clip);
-              this.animations.door.setLoop(THREE.LoopOnce);
-              this.animations.door.clampWhenFinished = true;
-              this.animations.door.timeScale = 1;
-            }
-            
-            if (clip.name === "Light BottomAction") {
-              console.log("Found light animation by name");
-              this.animations.light = this.mixer.clipAction(clip);
-              this.animations.light.setLoop(THREE.LoopOnce);
-              this.animations.light.clampWhenFinished = true;
-              this.animations.light.timeScale = 1;
-            }
-          });
-          
-          // Add methods to play animations
-          
-          // Door animation methods
-          this.playDoorAnimation = () => {
-            if (this.animations && this.animations.door) {
-              console.log('Playing door animation');
-              this.animations.door.reset();
-              this.animations.door.timeScale = 6.5; // Forward playback
-              this.animations.door.play();
-            } else {
-              console.warn('Door animation not available');
-            }
-          };
-          
-          this.resetDoorAnimation = () => {
-            if (this.animations && this.animations.door) {
-              console.log('Closing door animation');
-              this.animations.door.reset();
-              this.animations.door.timeScale = -1; // Reverse playback
-              this.animations.door.play();
-            } else {
-              console.warn('Door animation not available');
-            }
-          };
-          
-          // Light animation methods
-          this.playLightAnimation = () => {
-            if (this.animations && this.animations.light) {
-              console.log('Playing light animation');
-              this.animations.light.reset();
-              this.animations.light.timeScale = 1; // Forward playback
-              this.animations.light.play();
-            } else {
-              console.warn('Light animation not available');
-            }
-          };
-          
-          this.resetLightAnimation = () => {
-            if (this.animations && this.animations.light) {
-              console.log('Resetting light animation');
-              this.animations.light.reset();
-              this.animations.light.timeScale = -1; // Reverse playback
-              this.animations.light.play();
-            } else {
-              console.warn('Light animation not available');
-            }
-          };
-          
-          // Method to play all animations sequentially
-          this.playAllAnimations = () => {
-            this.playDoorAnimation();
-            
-            // Play light animation after door animation
-            const doorDuration = this.animations.door.getClip().duration * 1000 / 4.5; // Convert to ms and adjust for speed
-            setTimeout(() => {
-              this.playLightAnimation();
-            }, doorDuration);
-          };
-
+loadModel() {
+  console.log("Attempting to load model from:", this.modelPath);
+  
+  // Show loader before starting
+  this.showLoader();
+  
+  // Set up a timeout to detect stalled loads
+  let loadTimeout = setTimeout(() => {
+    console.warn('Model loading seems to be taking a long time...');
+    // Update the loader text to inform the user
+    const loaderText = document.querySelector('.loader-text');
+    if (loaderText) {
+      loaderText.textContent = 'Still loading... Please wait a moment';
+    }
+  }, 30000); // 30 second timeout
+  
+  // Try the worker loader first (which now just downloads, with parsing on main thread)
+  workerModelLoader.load(
+    this.modelPath,
+    // Success callback
+    (gltf) => {
+      clearTimeout(loadTimeout);
+      console.log('GLTF data loaded successfully');
+      this.model = gltf.scene;
+      
+      // Process the model immediately after loading
+      this.processLoadedModel(gltf);
+    },
+    // Progress callback
+    (percent, phase) => {
+      // Make sure progress never exceeds 100%
+      const clampedPercent = Math.min(percent, 100);
+      
+      console.log(`Loading ${phase || 'progress'}: ${clampedPercent.toFixed(0)}%`);
+      
+      // Update loader text to show progress and phase
+      const loaderText = document.querySelector('.loader-text');
+      if (loaderText) {
+        if (phase === 'downloading') {
+          loaderText.textContent = `Downloading model... ${clampedPercent.toFixed(0)}%`;
+        } else if (phase === 'parsing') {
+          loaderText.textContent = `Processing model... ${clampedPercent.toFixed(0)}%`;
+        } else if (phase === 'complete') {
+          loaderText.textContent = `Loading complete!`;
         } else {
-          console.log('No animations found in the model');
+          loaderText.textContent = `Loading Sauna Model... ${clampedPercent.toFixed(0)}%`;
         }
-        
-        // Keep track of the front meshes we need to make transparent
-        const frontMeshNames = [
-          // From images 1-4
-          'Sauna_Front_Window_Frame_Outside',
-          'Sauna_Front_Glass_Window',
-          'Sauna_Front_Window_Frame_Inside',
-          'Sauna_Front_Glass_Door',
-          'Sauna_Front_Door_Handle_Inner',
-          'Sauna_Front_Door_Handle_Outer',
-          'Sauna_Front_Door_Frame_01',
-          'Sauna_Front_Door_Frame_02',
-          'Sauna_Front_Window_Frame_Inside001',
-          'Hinge_01-3',
-          'Hinge_01-3001',
-          'Magnet_01',
-          'Magnet_02',
-          'Sphere',
-          "Object_0_1",
-          "Object_0"
-        ];
-        
-        // Traverse all objects in the model
-        this.model.traverse((child) => {
-          console.log('Scene contains:', child.type, child.name, child.userData);
-          
-          // Debug animations at the object level
-          if (child.animations && child.animations.length > 0) {
-            console.log('Object has animations:', child.name, child.animations);
-          }
-          
-          // Enable shadows
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-            
-            // Check if this mesh is in our list of front meshes
-            if (frontMeshNames.some(name => child.name.includes(name))) {
-              console.log("Found front mesh:", child.name);
-              // Store reference to make transparent when needed
-              this.transparentMeshes.push(child);
-            }
-          }
-        });
-        
-        // Center the model
-        const box = new THREE.Box3().setFromObject(this.model);
-        const size = box.getSize(new THREE.Vector3());
-        const center = box.getCenter(new THREE.Vector3());
-        
-        // Store model center for view-based visibility calculation
-        this.modelCenter.copy(center);
-        
-        // Log bounding box for debugging
-        console.log('Model size:', size);
-        console.log('Model center:', center);
-        
-        // Position model at center
-        this.model.position.x = -center.x;
-        this.model.position.y = -center.y;
-        this.model.position.z = -center.z;
-        
-        // Scale if needed
-        const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim > 10) {
-          const scale = 5 / maxDim;
-          this.model.scale.set(scale, scale, scale);
-          console.log('Model scaled down to:', scale);
-        } else if (maxDim < 0.5) {
-          const scale = 2 / maxDim;
-          this.model.scale.set(scale, scale, scale);
-          console.log('Model scaled up to:', scale);
-        }
-        
-        // Add the model to the scene
-        this.scene.add(this.model);
-        
-        // Add hotspots after model is loaded and positioned
-        this.addModelHotspots();
-        
-        // Position camera to view the whole model
-        this.camera.position.set(1.52, 0.53, -3.4);
-        this.lastCameraPosition.copy(this.camera.position);
-        
-        // Rotate model to face up
-        this.model.rotation.y = Math.PI / 1;
-        
-        console.log('Model added to scene');
-      },
-      onProgress,
-      onError
-    );
+      }
+      
+      // Update percentage display
+      const loaderPercentage = document.getElementById('loader-percentage');
+      if (loaderPercentage) {
+        loaderPercentage.textContent = `${clampedPercent.toFixed(0)}%`;
+      }
+      
+      // Update progress bar if it exists
+      const progressBar = document.getElementById('progress-bar');
+      if (progressBar) {
+        progressBar.style.width = `${clampedPercent}%`;
+      }
+      
+      // Dispatch a custom event that the main app can listen to
+      const event = new CustomEvent('modelLoadProgress', { 
+        detail: { progress: clampedPercent } 
+      });
+      window.dispatchEvent(event);
+    },
+    // Error callback
+    (error) => {
+      clearTimeout(loadTimeout);
+      console.error('Error loading model:', error);
+      
+      // Hide loader on error
+      this.hideLoader();
+      
+      // Show error message with retry option
+      const errorMessage = `Failed to load model: ${error}. Please refresh to try again.`;
+      alert(errorMessage);
+    }
+  );
+}
+
+// You can also optimize your processLoadedModel method for better performance
+processLoadedModel(gltf) {
+  console.time('modelProcessing');
+  
+  // Update loader text
+  const loaderText = document.querySelector('.loader-text');
+  if (loaderText) {
+    loaderText.textContent = 'Finalizing model...';
   }
+  
+  // Hide loader now that model is loaded
+  this.hideLoader();
+  
+  // Log model details for debugging
+  console.log('Model loaded:', this.model);
+  
+  // Set up animation mixer
+  this.mixer = new THREE.AnimationMixer(this.model);
+  
+  // Process animations
+  this.setupAnimations(gltf);
+  
+  // Optimize model rendering
+  this.optimizeModel();
+  
+  // Add the model to the scene
+  this.scene.add(this.model);
+  
+  // Add hotspots after model is loaded and positioned
+  this.addModelHotspots();
+  
+  // Position camera to view the whole model
+  this.camera.position.set(1.52, 0.53, -3.4);
+  this.lastCameraPosition.copy(this.camera.position);
+  
+  // Rotate model to face up
+  this.model.rotation.y = Math.PI / 1;
+  
+  console.timeEnd('modelProcessing');
+  console.log('Model added to scene');
+}
+// Add this new method to separate model processing from loading
+
+// Add this method to set up animations more efficiently
+setupAnimations(gltf) {
+  if (gltf.animations && gltf.animations.length > 0) {
+    console.log('Animations found:', gltf.animations.length);
+    
+    // Initialize animation storage
+    this.animations = {};
+    
+    // Create a map for animations to avoid repeated iteration
+    const animationMap = {};
+    gltf.animations.forEach(clip => {
+      animationMap[clip.name] = clip;
+    });
+    
+    // Set up door animation
+    if (animationMap["ACT Sauna Front Glass Door"]) {
+      const clip = animationMap["ACT Sauna Front Glass Door"];
+      this.animations.door = this.mixer.clipAction(clip);
+      this.animations.door.setLoop(THREE.LoopOnce);
+      this.animations.door.clampWhenFinished = true;
+      this.animations.door.timeScale = 1;
+    }
+    
+    // Set up light animation
+    if (animationMap["Light BottomAction"]) {
+      const clip = animationMap["Light BottomAction"];
+      this.animations.light = this.mixer.clipAction(clip);
+      this.animations.light.setLoop(THREE.LoopOnce);
+      this.animations.light.clampWhenFinished = true;
+      this.animations.light.timeScale = 1;
+    }
+    
+    // Setup animation control methods
+    this.setupAnimationMethods();
+  }
+}
+
+// Add this method to set up animation methods
+setupAnimationMethods() {
+  // Door animation methods
+  this.playDoorAnimation = () => {
+    if (this.animations && this.animations.door) {
+      console.log('Playing door animation');
+      this.animations.door.reset();
+      this.animations.door.timeScale = 6.5; // Forward playback
+      this.animations.door.play();
+    } else {
+      console.warn('Door animation not available');
+    }
+  };
+  
+  this.resetDoorAnimation = () => {
+    if (this.animations && this.animations.door) {
+      console.log('Closing door animation');
+      this.animations.door.reset();
+      this.animations.door.timeScale = -1; // Reverse playback
+      this.animations.door.play();
+    } else {
+      console.warn('Door animation not available');
+    }
+  };
+  
+  // Light animation methods
+  this.playLightAnimation = () => {
+    if (this.animations && this.animations.light) {
+      console.log('Playing light animation');
+      this.animations.light.reset();
+      this.animations.light.timeScale = 1; // Forward playback
+      this.animations.light.play();
+    } else {
+      console.warn('Light animation not available');
+    }
+  };
+  
+  this.resetLightAnimation = () => {
+    if (this.animations && this.animations.light) {
+      console.log('Resetting light animation');
+      this.animations.light.reset();
+      this.animations.light.timeScale = -1; // Reverse playback
+      this.animations.light.play();
+    } else {
+      console.warn('Light animation not available');
+    }
+  };
+  
+  // Method to play all animations sequentially
+  this.playAllAnimations = () => {
+    this.playDoorAnimation();
+    
+    // Play light animation after door animation
+    const doorDuration = this.animations.door.getClip().duration * 1000 / 4.5; // Convert to ms and adjust for speed
+    setTimeout(() => {
+      this.playLightAnimation();
+    }, doorDuration);
+  };
+}
+
+// Add this method to optimize model rendering
+optimizeModel() {
+  // Keep track of the front meshes we need to make transparent
+  const frontMeshNames = [
+    'Sauna_Front_Window_Frame_Outside',
+    'Sauna_Front_Glass_Window',
+    'Sauna_Front_Window_Frame_Inside',
+    'Sauna_Front_Glass_Door',
+    'Sauna_Front_Door_Handle_Inner',
+    'Sauna_Front_Door_Handle_Outer',
+    'Sauna_Front_Door_Frame_01',
+    'Sauna_Front_Door_Frame_02',
+    'Sauna_Front_Window_Frame_Inside001',
+    'Hinge_01-3',
+    'Hinge_01-3001',
+    'Magnet_01',
+    'Magnet_02',
+    'Sphere',
+    "Object_0_1",
+    "Object_0"
+  ];
+  
+  // Traverse all objects in the model
+  this.model.traverse((child) => {
+    // Enable shadows
+    if (child.isMesh) {
+      // Apply proper frustum culling
+      child.frustumCulled = true;
+      
+      // Enable shadows only where needed
+      child.castShadow = true;
+      child.receiveShadow = true;
+      
+      // Lower resolution for shadows to improve performance
+      if (child.material) {
+        // Optimize material settings
+        child.material.precision = "lowp"; // Use low precision shaders
+        
+        // Disable unnecessary material features
+        if (!child.material.map) {
+          child.material.needsUpdate = false;
+        }
+      }
+      
+      // Check if this mesh is in our list of front meshes
+      if (frontMeshNames.some(name => child.name.includes(name))) {
+        // Store reference to make transparent when needed
+        this.transparentMeshes.push(child);
+      }
+    }
+  });
+  
+  // Center the model
+  const box = new THREE.Box3().setFromObject(this.model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  
+  // Store model center for view-based visibility calculation
+  this.modelCenter.copy(center);
+  
+  // Position model at center
+  this.model.position.x = -center.x;
+  this.model.position.y = -center.y;
+  this.model.position.z = -center.z;
+  
+  // Scale if needed
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if (maxDim > 10) {
+    const scale = 5 / maxDim;
+    this.model.scale.set(scale, scale, scale);
+  } else if (maxDim < 0.5) {
+    const scale = 2 / maxDim;
+    this.model.scale.set(scale, scale, scale);
+  }
+}
   
   update(deltaTime) {
     // Update the animation mixer in your render/animation loop
@@ -307,7 +392,7 @@ export class ModelManager {
   addModelHotspots() {
     // Create the special "Open Door" hotspot
     const openDoorHotspot = this.createHotspot(
-      new THREE.Vector3(-0.1, -0.1, -0.65), // Positioned for Open Door
+      new THREE.Vector3(-0.15, -0.05, -0.65), // Positioned for Open Door
       'door_action',
       'Open Door',
       'Click to open the door and enter the sauna',
@@ -318,7 +403,8 @@ export class ModelManager {
       false, // Not an inside view (but will trigger it)
       true // This is a special action hotspot
     );
-    
+    openDoorHotspot.userData.labelMesh.visible = false;
+openDoorHotspot.userData.neverShowLabel = true; 
     // Add to outside hotspots
     this.outsideHotspots.push(openDoorHotspot);
     
@@ -538,41 +624,111 @@ export class ModelManager {
     hotspotGroup.position.copy(position);
     hotspotGroup.renderOrder = 100; // Base render order for hotspot groups
     
-    // Create black outline circle (slightly larger than the white circle)
-    const outlineGeometry = new THREE.CircleGeometry(0.065, 32);
-    const outlineMaterial = new THREE.MeshBasicMaterial({
-      color:  0x000000, // Green outline for action hotspots
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.8,
-      depthWrite: false,
-      depthTest: false
-    });
-    const outlineCircle = new THREE.Mesh(outlineGeometry, outlineMaterial);
-    outlineCircle.position.z = -0.001; // Slightly behind the white circle
-    outlineCircle.renderOrder = 101; // Ensure outline renders above model
-    
-    // Create white circle (main hotspot)
-    const circleGeometry = new THREE.CircleGeometry(0.06, 32);
-    const circleMaterial = new THREE.MeshBasicMaterial({
-      color:  0xffffff, // Light green fill for action hotspots
-      side: THREE.DoubleSide,
-      transparent: true,
-      opacity: 0.9,
-      depthWrite: false,
-      depthTest: false
-    });
-    const circle = new THREE.Mesh(circleGeometry, circleMaterial);
-    circle.renderOrder = 102; // Ensure circle renders above outline
-    
-    // Store reference to the circle for hover detection
-    circle.userData.isHotspotCircle = true;
-    circle.userData.parentHotspot = hotspotGroup;
-    this.hotspotCircles.push(circle);
-    
-    // Add both circles to the group (outline first, then white circle)
-    hotspotGroup.add(outlineCircle);
-    hotspotGroup.add(circle);
+    // Check if this is the door action hotspot
+    if (isActionHotspot && title === "Open Door") {
+      // Use PNG icon for door hotspot
+      const textureLoader = new THREE.TextureLoader();
+      
+      // Create temporary circle to maintain functionality until texture loads
+      const tempCircleGeometry = new THREE.CircleGeometry(0.06, 32);
+      const tempCircleMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.5, // Semi-transparent until the real icon loads
+        depthWrite: false,
+        depthTest: false
+      });
+      const tempCircle = new THREE.Mesh(tempCircleGeometry, tempCircleMaterial);
+      tempCircle.renderOrder = 102;
+      tempCircle.userData.isHotspotCircle = true;
+      tempCircle.userData.parentHotspot = hotspotGroup;
+      this.hotspotCircles.push(tempCircle);
+      hotspotGroup.add(tempCircle);
+      
+      // Load the door icon texture - update this path to where your icon is stored
+      textureLoader.load('./public/icons/ss.png', (texture) => {
+        // Remove temporary circle
+        hotspotGroup.remove(tempCircle);
+        const tempIndex = this.hotspotCircles.indexOf(tempCircle);
+        if (tempIndex > -1) {
+          this.hotspotCircles.splice(tempIndex, 1);
+        }
+        
+        // Create a plane with the door icon texture
+        const iconGeometry = new THREE.PlaneGeometry(0.15, 0.15);
+        const iconMaterial = new THREE.MeshBasicMaterial({
+          map: texture,
+          transparent: true,
+          depthWrite: false,
+          depthTest: false
+        });
+        const iconMesh = new THREE.Mesh(iconGeometry, iconMaterial);
+        iconMesh.renderOrder = 102;
+        
+        // Store reference to the icon for hover detection
+        iconMesh.userData.isHotspotCircle = true;
+        iconMesh.userData.parentHotspot = hotspotGroup;
+        this.hotspotCircles.push(iconMesh);
+        
+        // Add icon to the group
+        hotspotGroup.add(iconMesh);
+        
+        // Store the icon material for opacity changes
+        if (hotspotGroup.userData && hotspotGroup.userData.materials) {
+          hotspotGroup.userData.materials.circle = iconMaterial;
+        }
+      }, undefined, (error) => {
+        console.error('Error loading door icon texture:', error);
+        // The temp circle will remain if the texture fails to load
+      });
+    } else {
+      // Regular hotspot with circles
+      
+      // Create black outline circle (slightly larger than the white circle)
+      const outlineGeometry = new THREE.CircleGeometry(0.065, 32);
+      const outlineMaterial = new THREE.MeshBasicMaterial({
+        color: 0x000000, // Black outline
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        depthTest: false
+      });
+      const outlineCircle = new THREE.Mesh(outlineGeometry, outlineMaterial);
+      outlineCircle.position.z = -0.001; // Slightly behind the white circle
+      outlineCircle.renderOrder = 101; // Ensure outline renders above model
+      
+      // Create white circle (main hotspot)
+      const circleGeometry = new THREE.CircleGeometry(0.06, 32);
+      const circleMaterial = new THREE.MeshBasicMaterial({
+        color: 0xffffff, // White fill
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        depthTest: false
+      });
+      const circle = new THREE.Mesh(circleGeometry, circleMaterial);
+      circle.renderOrder = 102; // Ensure circle renders above outline
+      
+      // Store reference to the circle for hover detection
+      circle.userData.isHotspotCircle = true;
+      circle.userData.parentHotspot = hotspotGroup;
+      this.hotspotCircles.push(circle);
+      
+      // Add both circles to the group (outline first, then white circle)
+      hotspotGroup.add(outlineCircle);
+      hotspotGroup.add(circle);
+      
+      // Store materials for opacity changes
+      hotspotGroup.userData = {
+        materials: {
+          outline: outlineMaterial,
+          circle: circleMaterial
+        }
+      };
+    }
     
     // Create label container for the title (initially invisible)
     const labelWidth = 0.70;  // Width of the label
@@ -607,7 +763,7 @@ export class ModelManager {
     context.arc(canvas.width/2 - rectWidth/2 + cornerRadius, canvas.height/2, cornerRadius, Math.PI/2, -Math.PI/2);
     context.closePath();
     
-    // Fill with white or light green for action hotspots
+    // Fill with white
     context.fillStyle = 'white';
     context.fill();
     
@@ -668,7 +824,9 @@ export class ModelManager {
     hotspotGroup.add(labelGroup);
     
     // Add metadata to the hotspot group with custom camera position if provided
+    // Preserving or adding userData properties
     hotspotGroup.userData = {
+      ...(hotspotGroup.userData || {}),
       type: 'hotspot',
       meshName: meshName,
       title: title,
@@ -681,11 +839,6 @@ export class ModelManager {
       isActionHotspot: isActionHotspot, // Flag for special action hotspots
       labelMesh: labelGroup, // Reference to the label for animations
       areaType: meshName, // Store the area type for view-based visibility
-      // Store materials for opacity changes
-      materials: {
-        outline: outlineMaterial,
-        circle: circleMaterial
-      }
     };
     
     // Set fixed scale (no pulsing) - slightly larger size
@@ -1104,6 +1257,7 @@ returnFromInfoPanelInsideView(cameraAnimator) {
 checkHotspotHover(mouse) {
   // Only return if we're viewing a hotspot detail and NOT in inside view
   // This allows hovering to work inside the sauna
+  
   if (this.currentHotspot && !this.isInsideView) {
     return;
   }
@@ -1136,7 +1290,7 @@ checkHotspotHover(mouse) {
       
       // Set new hovered hotspot and show its label
       this.hoveredHotspot = hotspotGroup;
-      if (hotspotGroup.userData.labelMesh) {
+      if (hotspotGroup.userData.labelMesh && !hotspotGroup.userData.neverShowLabel) {
         hotspotGroup.userData.labelMesh.visible = true;
       }
     }

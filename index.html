@@ -17,87 +17,128 @@
 
     /* Loader overlay styles */
     .loader-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100vw;
-      height: 100vh;
-      /* This blurs whatever is rendered behind this overlay */
-      backdrop-filter: blur(16px);
-      /* A semi-transparent background color enhances the blur effect */
-      background-color: rgba(255, 255, 255, 0.3);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 100; /* Ensure it stays on top of your Three.js canvas */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    backdrop-filter: blur(16px);
+    background-color: rgba(255, 255, 255, 0.5);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    transition: opacity 0.5s ease;
+  }
+  
+  .loader {
+    --color: #a5a5b0;
+    --size: 70px;
+    width: var(--size);
+    height: var(--size);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+    margin-bottom: 20px;
+  }
+  
+  .loader span {
+    width: 100%;
+    height: 100%;
+    background-color: var(--color);
+    animation: keyframes-blink 0.6s alternate infinite linear;
+  }
+  
+  .loader span:nth-child(1) { animation-delay: 0ms; }
+  .loader span:nth-child(2) { animation-delay: 200ms; }
+  .loader span:nth-child(3) { animation-delay: 300ms; }
+  .loader span:nth-child(4) { animation-delay: 400ms; }
+  .loader span:nth-child(5) { animation-delay: 500ms; }
+  .loader span:nth-child(6) { animation-delay: 600ms; }
+  
+  /* Percentage indicator styles */
+  .loader-percentage {
+    font-size: 32px;
+    font-weight: bold;
+    color: #333;
+    margin: 10px 0;
+  }
+  
+  /* Loading text styles */
+  .loader-text {
+    font-size: 18px;
+    color: #555;
+    margin: 5px 0;
+  }
+  
+  /* Tip text styles */
+  .loader-tip {
+    margin-top: 15px;
+    font-size: 14px;
+    color: #777;
+    font-style: italic;
+  }
+  
+  /* Progress bar container */
+  .progress-container {
+    width: 300px;
+    height: 6px;
+    background-color: #e0e0e0;
+    border-radius: 3px;
+    margin-top: 20px;
+    overflow: hidden;
+  }
+  
+  /* Progress bar */
+  .progress-bar {
+    height: 100%;
+    width: 0%;
+    background-color: #7c5834; /* Match the sauna theme color */
+    transition: width 0.3s ease;
+  }
+  
+  @keyframes keyframes-blink {
+    0% {
+      opacity: 0.3;
+      transform: scale(0.5) rotate(5deg);
     }
-
-    /* Loader spinner styles */
-    .loader {
-      --color: #a5a5b0;
-      --size: 70px;
-      width: var(--size);
-      height: var(--size);
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 5px;
-      margin-bottom: 20px;
+    50% {
+      opacity: 1;
+      transform: scale(1);
     }
-    .loader span {
-      width: 100%;
-      height: 100%;
-      background-color: var(--color);
-      animation: keyframes-blink 0.6s alternate infinite linear;
-    }
-    .loader span:nth-child(1) { animation-delay: 0ms; }
-    .loader span:nth-child(2) { animation-delay: 200ms; }
-    .loader span:nth-child(3) { animation-delay: 300ms; }
-    .loader span:nth-child(4) { animation-delay: 400ms; }
-    .loader span:nth-child(5) { animation-delay: 500ms; }
-    .loader span:nth-child(6) { animation-delay: 600ms; }
-
-    /* Percentage indicator styles */
-    .loader-percentage {
-      font-size: 24px;
-      font-weight: bold;
-      color: #333;
-      margin-top: 10px;
-    }
-
-    /* Loading text styles */
-    .loader-text {
-      font-size: 18px;
-      color: #555;
-      margin-top: 5px;
-    }
-
-    @keyframes keyframes-blink {
-      0% {
-        opacity: 0.3;
-        transform: scale(0.5) rotate(5deg);
-      }
-      50% {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
+  }
+    
   </style>
+  <script>
+    // Add this script to index.html to update the progress bar
+    document.addEventListener('DOMContentLoaded', function() {
+      const progressBar = document.getElementById('progress-bar');
+      
+      window.addEventListener('modelLoadProgress', function(event) {
+        const progress = event.detail.progress;
+        if (progressBar) {
+          progressBar.style.width = `${Math.min(progress, 100)}%`;
+        }
+      });
+    });
+  </script>
 </head>
 <body>
   <!-- Loader Overlay with the Spinner and Percentage -->
-  <div class="loader-overlay" id="loader-overlay">
-    <div class="loader">
-      <span></span>
-      <span></span>
-      <span></span>
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-    <!-- <div class="loader-percentage" id="loader-percentage">0%</div> -->
-    <div class="loader-text">Loading Sauna Model...</div>
+<!-- Updated loader overlay in index.html -->
+<div class="loader-overlay" id="loader-overlay">
+  <div class="loader">
+    <span></span>
+    <span></span>
+    <span></span>
+    <span></span>
+    <span></span>
+    <span></span>
   </div>
+  <!-- <div class="loader-percentage" id="loader-percentage">0%</div> -->
+  <div class="loader-text">Preparing to load Sauna Model...</div>
+  <div class="loader-tip">Large 3D model - this may take a moment</div>
 
   <!-- Your Three.js application -->
   <script type="module" src="app.js"></script>
