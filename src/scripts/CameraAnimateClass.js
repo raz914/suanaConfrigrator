@@ -11,7 +11,36 @@ export class CameraAnimateClass {
     // Optional: Add camera position tester
     // this.setupCameraPositionTester();
   }
-  
+  determineViewingSide() {
+    // Get direction vector from model center to camera
+    const directionToCamera = new THREE.Vector3().subVectors(this.scene.modelManager.camera.position, new THREE.Vector3(0, 0, 0));
+    
+    // Normalize the direction vector
+    directionToCamera.normalize();
+    
+    // Calculate dot products to determine which side is facing the camera
+    const dotFront = directionToCamera.dot(new THREE.Vector3(0, 0, -1));
+    const dotBack = directionToCamera.dot(new THREE.Vector3(0, 0, 1));
+    const dotLeft = directionToCamera.dot(new THREE.Vector3(1, 0, 0));
+    const dotRight = directionToCamera.dot(new THREE.Vector3(-1, 0, 0));
+    
+    // Get the largest dot product
+    const maxDot = Math.max(dotFront, dotBack, dotLeft, dotRight);
+    
+    // Determine the side based on the largest dot product
+    let side;
+    if (maxDot === dotFront) {
+      side = 'front';
+    } else if (maxDot === dotBack) {
+      side = 'back';
+    } else if (maxDot === dotLeft) {
+      side = 'left';
+    } else {
+      side = 'right';
+    }
+    
+    return side;
+  }
   easeInOutCubic(t) {
     return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
@@ -53,7 +82,36 @@ export class CameraAnimateClass {
     // Start animation
     animate();
   }
-  
+  determineViewingSide() {
+    // Get direction vector from model center to camera
+    const directionToCamera = new THREE.Vector3().subVectors(this.camera.position, new THREE.Vector3(0, 0, 0));
+    
+    // Normalize the direction vector
+    directionToCamera.normalize();
+    
+    // Calculate dot products to determine which side is facing the camera
+    const dotFront = directionToCamera.dot(new THREE.Vector3(0, 0, -1));
+    const dotBack = directionToCamera.dot(new THREE.Vector3(0, 0, 1));
+    const dotLeft = directionToCamera.dot(new THREE.Vector3(1, 0, 0));
+    const dotRight = directionToCamera.dot(new THREE.Vector3(-1, 0, 0));
+    
+    // Get the largest dot product
+    const maxDot = Math.max(dotFront, dotBack, dotLeft, dotRight);
+    
+    // Determine the side based on the largest dot product
+    let side;
+    if (maxDot === dotFront) {
+      side = 'front';
+    } else if (maxDot === dotBack) {
+      side = 'back';
+    } else if (maxDot === dotLeft) {
+      side = 'left';
+    } else {
+      side = 'right';
+    }
+    
+    return side;
+  }
   isAnimating() {
     return this.animating;
   }
