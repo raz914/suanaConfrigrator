@@ -60,28 +60,7 @@ export class ModelManager {
     this.backButton = backButton;
   }
   
-  handleBackButtonClick() {
-    // Play door close animation
-    if (this.resetDoorAnimation) {
-      this.resetDoorAnimation();
-    }
-    
-    // Hide the inside hotspots
-    this.toggleInsideHotspots(false);
-    
-    // Hide the back button
-    this.backButton.style.display = 'none';
-    
-    // After animation completes, return to original view
-    setTimeout(() => {
-      this.returnToOriginalView(this.scene.cameraAnimator);
-      this.isInsideView = false;
-      document.body.style.cursor = 'auto'; // Reset cursor just in case
-      // Reset stored inside camera position
-      this.insideCameraPosition = null;
-      this.insideCameraTarget = null;
-    }, 500); // Slight delay to let door animation start
-  }
+
 // Add this to your ModelManager.js file in the loadModel method
 
 loadModel() {
@@ -399,7 +378,7 @@ optimizeModel() {
       // Camera position when inside the sauna (will be set when clicked)
       new THREE.Vector3(-0.01, 0.83, -1.11),
       // Look at the inside of the sauna
-      new THREE.Vector3(-0.05, -0.00, 0.65),
+      new THREE.Vector3(0, 0.6, 0),
       false, // Not an inside view (but will trigger it)
       true // This is a special action hotspot
     );
@@ -919,65 +898,44 @@ openDoorHotspot.userData.neverShowLabel = true;
     });
   }
   
-  // Method to handle hotspot clicks
-  handleHotspotClick(hotspot, cameraAnimator, infoPanel) {
-    if (this.animating) return;
-    
-    console.log("Handling hotspot click for:", hotspot);
-    this.currentHotspot = hotspot;
-    
-    // Make this hotspot smaller
-    this.makeHotspotSmaller(hotspot);
-    
-    if (hotspot.userData && hotspot.userData.labelMesh) {
-      hotspot.userData.labelMesh.visible = false;
-    }
-    
-    // Check if this is the open door action hotspot
-    if (hotspot.userData.isActionHotspot && hotspot.userData.title === "Open Door") {
-      this.handleOpenDoorHotspot(hotspot, cameraAnimator);
-      return;
-    }
-    
-    // For inside hotspots, keep track of where we were before clicking
-    if (hotspot.userData.isInsideView && this.isInsideView) {
-      // We're already inside, so store the current inside camera position
-      this.cameraPositionBeforeInfoPanel = this.camera.position.clone();
-      this.targetPositionBeforeInfoPanel = this.controls.target.clone();
-    } else {
-      // For outside hotspots, store the normal outside position
-      this.cameraPositionBeforeHotspot = this.camera.position.clone();
-      this.targetPositionBeforeHotspot = this.controls.target.clone();
-    }
-    
-    if (hotspot.userData.isInsideView) {
-      // Make front meshes transparent (they should already be, but just in case)
-      this.setFrontMeshesTransparency(true);
-    } else if (!this.isInsideView) {
-      // Only reset transparency if we're not inside
-      this.setFrontMeshesTransparency(false);
-    }
-    
-    // Disable controls during animation
-    this.controls.enabled = false;
-    this.animating = true;
-    
-    // Hide other hotspots, but keep inside hotspots visible if we're inside
-    if (this.isInsideView && hotspot.userData.isInsideView) {
-      // If we're inside and clicking an inside hotspot, only hide other inside hotspots
-      this.hideOtherInsideHotspots(hotspot);
-    } else {
-      // Otherwise hide all other hotspots
-      this.hideHotspots(hotspot);
-    }
-    
+
+
+// Replace returnFromInfoPanelInsideView method
+// These are the modifications needed for ModelManager.js
+// You should integrate these into the existing ModelManager.js file
+
+// Add to the handleOpenDoorHotspot method
+handleOpenDoorHotspot(hotspot, cameraAnimator) {
+  // Store current camera position for back button
+  this.cameraPositionBeforeHotspot = this.camera.position.clone();
+  this.targetPositionBeforeHotspot = this.controls.target.clone();
+  
+  // Hide all hotspots
+  this.hideHotspots();
+  
+  // Disable controls during animation
+  this.controls.enabled = false;
+  this.animating = true;
+  
+  // Play door animation
+  if (this.playDoorAnimation) {
+    this.playDoorAnimation();
+  }
+  
+  // Set flag that we're in inside view
+  this.isInsideView = true;
+  
+  // Wait for door to open a bit before moving camera inside
+  setTimeout(() => {
     // Get target camera position from hotspot
-    const targetPosition = hotspot.userData.cameraPosition;
-    const lookAtPosition = hotspot.userData.lookAt;
+    const targetPosition = hotspot.userData.cameraPosition; // Inside position
+    const lookAtPosition = hotspot.userData.lookAt; // Inside target
     
-    console.log("Moving camera to:", targetPosition, "looking at:", lookAtPosition);
+    // Store these positions for when returning from info panels
+    this.insideCameraPosition = targetPosition.clone();
+    this.insideCameraTarget = lookAtPosition.clone();
     
-    // Animate camera to new position using the CameraAnimateClass
+    // Animate camera to inside position
     cameraAnimator.animateCamera(
       this.camera.position.clone(),
       targetPosition,
@@ -987,85 +945,165 @@ openDoorHotspot.userData.neverShowLabel = true;
       () => {
         // Animation complete
         this.controls.target.copy(lookAtPosition);
-        this.controls.enabled = false; // Keep controls disabled while info panel is open
+        // Keep controls disabled to prevent user from panning/zooming too much inside
+        this.controls.enabled = false; 
         this.animating = false;
-        if (hotspot.visible && hotspot.userData.labelMesh) {
-          hotspot.userData.labelMesh.visible = false;
+        
+        // Make front meshes invisible
+        // this.setFrontMeshesTransparency(true);
+        
+        // Show inside hotspots
+        this.toggleInsideHotspots(true);
+        
+        // Reset cursor to normal (not hand pointer)
+        document.body.style.cursor = 'auto';
+        
+        // Show the back button
+        this.backButton.style.display = 'block';
+        
+        this.insideCameraPosition = this.camera.position.clone();
+        this.insideCameraTarget = lookAtPosition.clone();
+        this.insideCameraRotation = this.camera.quaternion.clone(); // Add this line to store rotation
+        
+        // NEW: Activate interior 360 view mode
+        if (this.scene.interiorViewManager) {
+          // Define a suitable pivot point inside the sauna
+          const pivotPoint = new THREE.Vector3(0, 0.6, 0);
+          // Activate interior view with current camera position and the pivot point
+          this.scene.interiorViewManager.activate(this.camera.position.clone(), pivotPoint);
         }
-        // Show info panel
-        infoPanel.showInfoPanel(hotspot.userData.title, hotspot.userData.description);
       }
     );
+  }, 400); // Wait a bit for the door to start opening
+}
+
+// Modify the handleBackButtonClick method
+handleBackButtonClick() {
+  // NEW: Deactivate interior view mode if active
+  if (this.scene.interiorViewManager && this.scene.interiorViewManager.isInteriorViewActive()) {
+    this.setFrontMeshesTransparency(false)
+    this.scene.interiorViewManager.deactivate();
   }
   
-  // Special handler for the open door hotspot
-  handleOpenDoorHotspot(hotspot, cameraAnimator) {
-    // Store current camera position for back button
+  // Play door close animation
+  if (this.resetDoorAnimation) {
+    this.resetDoorAnimation();
+  }
+  
+  // Hide the inside hotspots
+  this.toggleInsideHotspots(false);
+  
+  // Hide the back button
+  this.backButton.style.display = 'none';
+  
+  // After animation completes, return to original view
+  setTimeout(() => {
+    this.returnToOriginalView(this.scene.cameraAnimator);
+    this.isInsideView = false;
+    document.body.style.cursor = 'auto'; // Reset cursor just in case
+    // Reset stored inside camera position
+    this.insideCameraPosition = null;
+    this.insideCameraTarget = null;
+  }, 500); // Slight delay to let door animation start
+}
+
+// Modify handleHotspotClick method to handle interior view mode
+handleHotspotClick(hotspot, cameraAnimator, infoPanel) {
+  if (this.animating) return;
+  
+  console.log("Handling hotspot click for:", hotspot);
+  this.currentHotspot = hotspot;
+  
+  // Make this hotspot smaller
+  this.makeHotspotSmaller(hotspot);
+  
+  if (hotspot.userData && hotspot.userData.labelMesh) {
+    hotspot.userData.labelMesh.visible = false;
+  }
+  
+  // Check if this is the open door action hotspot
+  if (hotspot.userData.isActionHotspot && hotspot.userData.title === "Open Door") {
+    this.handleOpenDoorHotspot(hotspot, cameraAnimator);
+    return;
+  }
+  
+  // NEW: If we're in interior view mode and clicking a hotspot,
+  // we need to temporarily disable interior view for the hotspot animation
+  let wasInteriorViewActive = false;
+  if (this.scene.interiorViewManager && this.scene.interiorViewManager.isInteriorViewActive()) {
+    wasInteriorViewActive = true;
+    this.scene.interiorViewManager.deactivate();
+  }
+  
+  // For inside hotspots, keep track of where we were before clicking
+  if (hotspot.userData.isInsideView && this.isInsideView) {
+    // We're already inside, so store the current inside camera position
+    this.cameraPositionBeforeInfoPanel = this.camera.position.clone();
+    this.targetPositionBeforeInfoPanel = this.controls.target.clone();
+  } else {
+    // For outside hotspots, store the normal outside position
     this.cameraPositionBeforeHotspot = this.camera.position.clone();
     this.targetPositionBeforeHotspot = this.controls.target.clone();
-    
-    // Hide all hotspots
-    this.hideHotspots();
-    
-    // Disable controls during animation
-    this.controls.enabled = false;
-    this.animating = true;
-    
-    // Play door animation
-    if (this.playDoorAnimation) {
-      this.playDoorAnimation();
-    }
-    
-    // Set flag that we're in inside view
-    this.isInsideView = true;
-    
-    // Wait for door to open a bit before moving camera inside
-    setTimeout(() => {
-      // Get target camera position from hotspot
-      const targetPosition = hotspot.userData.cameraPosition; // Inside position
-      const lookAtPosition = hotspot.userData.lookAt; // Inside target
-      
-      // Store these positions for when returning from info panels
-      this.insideCameraPosition = targetPosition.clone();
-      this.insideCameraTarget = lookAtPosition.clone();
-      
-      // Animate camera to inside position
-      cameraAnimator.animateCamera(
-        this.camera.position.clone(),
-        targetPosition,
-        this.controls.target.clone(),
-        lookAtPosition,
-        1.0, // Animation duration in seconds
-        () => {
-          // Animation complete
-          this.controls.target.copy(lookAtPosition);
-          // Keep controls disabled to prevent user from panning/zooming too much inside
-          this.controls.enabled = false; 
-          this.animating = false;
-          
-          // Make front meshes invisible
-          this.setFrontMeshesTransparency(true);
-          
-          // Show inside hotspots
-          this.toggleInsideHotspots(true);
-          
-          // Reset cursor to normal (not hand pointer)
-          document.body.style.cursor = 'auto';
-          
-          // Show the back button
-          this.backButton.style.display = 'block';
-        }
-      );
-    }, 400); // Wait a bit for the door to start opening
   }
   
-// Replace returnFromInfoPanelInsideView method
+  if (hotspot.userData.isInsideView) {
+    // Make front meshes transparent (they should already be, but just in case)
+    this.setFrontMeshesTransparency(true);
+  } else if (!this.isInsideView) {
+    // Only reset transparency if we're not inside
+    this.setFrontMeshesTransparency(false);
+  }
+  
+  // Disable controls during animation
+  this.controls.enabled = false;
+  this.animating = true;
+  
+  // Hide other hotspots, but keep inside hotspots visible if we're inside
+  if (this.isInsideView && hotspot.userData.isInsideView) {
+    // If we're inside and clicking an inside hotspot, only hide other inside hotspots
+    this.hideOtherInsideHotspots(hotspot);
+  } else {
+    // Otherwise hide all other hotspots
+    this.hideHotspots(hotspot);
+  }
+  
+  // Get target camera position from hotspot
+  const targetPosition = hotspot.userData.cameraPosition;
+  const lookAtPosition = hotspot.userData.lookAt;
+  
+  console.log("Moving camera to:", targetPosition, "looking at:", lookAtPosition);
+  
+  // Animate camera to new position using the CameraAnimateClass
+  cameraAnimator.animateCamera(
+    this.camera.position.clone(),
+    targetPosition,
+    this.controls.target.clone(),
+    lookAtPosition,
+    1.0, // Animation duration in seconds
+    () => {
+      // Animation complete
+      this.controls.target.copy(lookAtPosition);
+      this.controls.enabled = false; // Keep controls disabled while info panel is open
+      this.animating = false;
+      if (hotspot.visible && hotspot.userData.labelMesh) {
+        hotspot.userData.labelMesh.visible = false;
+      }
+      // Show info panel
+      infoPanel.showInfoPanel(hotspot.userData.title, hotspot.userData.description);
+    }
+  );
+}
+
+// Update returnFromInfoPanelInsideView method
+// Update returnFromInfoPanelInsideView method
+// Update returnFromInfoPanelInsideView method
 returnFromInfoPanelInsideView(cameraAnimator) {
+  // First, check if we have stored positions
   if (!this.cameraPositionBeforeInfoPanel || !this.targetPositionBeforeInfoPanel) {
     // If no position stored, use the default inside position
     if (this.insideCameraPosition && this.insideCameraTarget) {
-      this.cameraPositionBeforeInfoPanel = this.insideCameraPosition;
-      this.targetPositionBeforeInfoPanel = this.insideCameraTarget;
+      this.cameraPositionBeforeInfoPanel = this.insideCameraPosition.clone();
+      this.targetPositionBeforeInfoPanel = this.insideCameraTarget.clone();
     } else {
       // If still no position, just return
       return;
@@ -1078,22 +1116,19 @@ returnFromInfoPanelInsideView(cameraAnimator) {
   // Reset any hotspot that was made smaller
   if (this.currentHotspot) {
     this.resetHotspotSize(this.currentHotspot);
-    // Explicitly clear current hotspot to enable hovering again
     this.currentHotspot = null;
   }
   
-  // Front meshes should remain hidden since we're still inside
-  this.setFrontMeshesTransparency(true);
-  
+  // Animate camera back to the exact position it was in before viewing the hotspot
   cameraAnimator.animateCamera(
     this.camera.position.clone(),
-    this.cameraPositionBeforeInfoPanel,
+    this.cameraPositionBeforeInfoPanel.clone(), // Use clone to avoid reference issues
     this.controls.target.clone(),
-    this.targetPositionBeforeInfoPanel,
+    this.targetPositionBeforeInfoPanel.clone(), // Use clone to avoid reference issues
     1.0,
     () => {
-      // Re-enable limited controls inside
-      this.controls.enabled = false; // Keep disabled inside
+      // Animation complete - don't enable original controls
+      this.controls.enabled = false;
       this.animating = false;
       
       // Show all inside hotspots again
@@ -1110,6 +1145,29 @@ returnFromInfoPanelInsideView(cameraAnimator) {
       
       // Keep back button visible
       this.backButton.style.display = 'block';
+      
+      // Store the exact current camera quaternion and rotation before reactivating interior view
+      const currentRotation = this.camera.quaternion.clone();
+      const currentPosition = this.camera.position.clone();
+      
+      // Reactivate interior view mode with proper pivot point
+      if (this.scene.interiorViewManager) {
+        // Deactivate first to ensure clean state
+        if (this.scene.interiorViewManager.isInteriorViewActive()) {
+          this.scene.interiorViewManager.deactivate();
+        }
+        
+        // Use the exact original position we entered with
+        const pivotPoint = new THREE.Vector3(0, 0.4, 0);
+        this.scene.interiorViewManager.activate(this.insideCameraPosition.clone(), pivotPoint);
+        
+        // Manually restore the exact camera rotation to match what it was after entering
+        this.camera.position.copy(currentPosition);
+        this.camera.quaternion.copy(currentRotation);
+        
+        // Make sure the controls are updated
+        this.scene.interiorViewManager.interiorControls.update();
+      }
     }
   );
 }

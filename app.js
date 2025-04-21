@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ModelManager } from './src/scripts/ModelManager.js';
 import { CameraAnimateClass } from './src/scripts/CameraAnimateClass.js';
 import { InfoPanelClass } from './src/scripts/InfoPanelClass.js';
+import { InteriorViewManager } from './src/scripts/InteriorViewManager.js';
 
 export class SuanaConfig {
   constructor(scene, camera, renderer, modelPath = './public/models/model2.glb') {
@@ -88,6 +89,14 @@ export class SuanaConfig {
       this.controls
     );
     
+    // Initialize the interior view manager (NEW)
+    this.interiorViewManager = new InteriorViewManager(
+      this.scene,
+      this.camera,
+      this.renderer,
+      this.controls
+    );
+    
     // Set callback for when info panel is closed
     this.infoPanel.setOnCloseCallback(() => {
       // Check if we're in inside view
@@ -133,6 +142,7 @@ export class SuanaConfig {
     this.scene.modelManager = this.modelManager;
     this.scene.cameraAnimator = this.cameraAnimator;
     this.scene.infoPanel = this.infoPanel;
+    this.scene.interiorViewManager = this.interiorViewManager;
   }
 
   createScene() {
@@ -258,7 +268,7 @@ export class SuanaConfig {
     this.controls.screenSpacePanning = false;
     this.controls.minDistance = 1;
     this.controls.maxDistance = 8; // Maximum zoom distance
-    this.controls.zoom = false;
+    // this.controls.enableZoom = false;
     // Restrict vertical rotation
     // This prevents the camera from going below the model
     this.controls.minPolarAngle = Math.PI * 0.05; // Slightly above the horizon (prevents looking up from below)
@@ -335,7 +345,9 @@ export class SuanaConfig {
       // Check for hotspot hover
       this.modelManager.checkHotspotHover(this.mouse);
     }
-    
+    if (this.interiorViewManager) {
+      this.interiorViewManager.update();
+    }
     // Update animations
     if(this.modelManager.mixer) {
       const delta = this.clock.getDelta();
